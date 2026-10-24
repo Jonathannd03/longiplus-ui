@@ -1,0 +1,86 @@
+@import './tokens.css';
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+input,
+textarea,
+select {
+  background-color: #fff;
+  color: #1a1a2e;
+  color-scheme: light;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #1a1a2e;
+  background-color: #f5f7fa;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 600;
+  color: var(--k-navy);
+  margin: 0;
+}
+
+a {
+  color: var(--k-blue);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Global button utility classes */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.btn:hover { opacity: 0.88; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn--navy   { background: var(--k-navy); color: #fff; }
+.btn--blue   { background: var(--k-blue); color: #fff; }
+.btn--yellow { background: var(--k-yellow); color: #1a1a2e; }
+.btn--ghost  { background: transparent; color: var(--k-blue); border-color: var(--k-border); }
+.btn--ghost-navy { background: transparent; color: var(--k-navy); border-color: #d1d5db; }
+.btn--red    { background: #fee2e2; color: #991b1b; }
+.btn--sm     { padding: 7px 14px; font-size: 12px; }

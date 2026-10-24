@@ -1,0 +1,16 @@
+:root {
+  --k-navy:   #083A8C;
+  --k-blue:   #0160D3;
+  --k-yellow: #FDC409;
+  --k-orange: #F7A21B;
+  --k-sky:    #E8F1FC;
+  --k-cream:  #FFF7E3;
+
+  /* Derived */
+  --k-navy-dark: #052a6a;
+  --k-text:      #1a1a2e;
+  --k-text-muted: #6b7280;
+  --k-border:    rgba(0, 0, 0, 0.08);
+  --k-radius:    12px;
+  --k-shadow:    0 4px 24px rgba(8, 58, 140, 0.10);
+}

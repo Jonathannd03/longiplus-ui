@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: Kelasi API
+  version: 0.1.0
+  description: School management and mobile money fee collection for private schools in the DRC.
+
+servers:
+  - url: http://localhost:3000/v1
+    description: Local development
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: Returns the operational status of the API, database and Redis.
+      tags:
+        - system
+      responses:
+        '200':
+          description: All systems operational
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: One or more dependencies are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    HealthStatus:
+      type: string
+      enum:
+        - ok
+        - error
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - database
+        - redis
+      properties:
+        status:
+          $ref: '#/components/schemas/HealthStatus'
+        database:
+          $ref: '#/components/schemas/HealthStatus'
+        redis:
+          $ref: '#/components/schemas/HealthStatus'
