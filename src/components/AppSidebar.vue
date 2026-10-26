@@ -19,6 +19,7 @@
         class="sidebar__link"
         :class="{ 'sidebar__link--active': isActive(item.to) }"
       >
+        <!-- v-html: icons are hardcoded SVG strings defined in this file — safe. If icons ever become dynamic (user-supplied or API-driven), switch to a component-based approach to prevent XSS. -->
         <span class="sidebar__icon" v-html="item.icon"></span>
         <span class="sidebar__label">{{ item.label }}</span>
         <span v-if="item.badge" class="sidebar__badge">{{ item.badge }}</span>
