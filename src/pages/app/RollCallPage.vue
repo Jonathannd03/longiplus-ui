@@ -7,84 +7,138 @@
       </RouterLink>
     </div>
 
-    <div class="page-meta">
-      <div>
-        <p class="eyebrow">APPEL · 10:10</p>
-        <h1 class="page-title">Physique · 3e Scientifique</h1>
-      </div>
-      <button class="btn btn--ghost btn--sm" @click="markAllPresent">Tout P</button>
-    </div>
+    <div v-if="loading" class="state-msg">Chargement…</div>
+    <div v-else-if="error" class="state-msg state-msg--error">{{ error }}</div>
+    <template v-else>
 
-    <div class="stats-bar">
-      <span class="stat-chip stat-chip--green">{{ presentCount }} présents</span>
-      <span class="stat-chip stat-chip--red">{{ absentCount }} absents</span>
-      <span class="stat-chip stat-chip--yellow">{{ lateCount }} retard</span>
-    </div>
-
-    <p class="hint">Tous présents par défaut. Touchez A ou R.</p>
-
-    <div class="students-list">
-      <div v-for="student in students" :key="student.id" class="student-row">
-        <div class="student-initials">{{ student.initials }}</div>
-        <div class="student-info">
-          <p class="student-name">{{ student.name }}</p>
-          <p v-if="student.note" class="student-note">{{ student.note }}</p>
+      <div class="page-meta">
+        <div>
+          <p class="eyebrow">APPEL · {{ timeLabel }}</p>
+          <h1 class="page-title">{{ sectionName }}</h1>
         </div>
-        <div class="toggle-group">
-          <button
-            v-for="opt in (['P', 'A', 'R'] as const)"
-            :key="opt"
-            class="toggle-btn"
-            :class="`toggle-btn--${opt.toLowerCase()} ${status[student.id] === opt ? 'toggle-btn--active' : ''}`"
-            @click="status[student.id] = opt"
-          >{{ opt }}</button>
+        <button class="btn btn--ghost btn--sm" @click="markAllPresent">Tout P</button>
+      </div>
+
+      <div class="stats-bar">
+        <span class="stat-chip stat-chip--green">{{ presentCount }} présents</span>
+        <span class="stat-chip stat-chip--red">{{ absentCount }} absents</span>
+        <span class="stat-chip stat-chip--yellow">{{ lateCount }} retards</span>
+      </div>
+
+      <p class="hint">Tous présents par défaut. Touchez A ou R.</p>
+
+      <div class="students-list">
+        <div v-for="s in students" :key="s.id" class="student-row">
+          <div class="student-initials">{{ s.lastName[0] }}{{ s.firstName[0] }}</div>
+          <div class="student-info">
+            <p class="student-name">{{ s.lastName }} {{ s.postName }} {{ s.firstName }}</p>
+          </div>
+          <div class="toggle-group">
+            <button
+              v-for="opt in (['P', 'A', 'R'] as const)"
+              :key="opt"
+              class="toggle-btn"
+              :class="`toggle-btn--${opt.toLowerCase()} ${status[s.id] === opt ? 'toggle-btn--active' : ''}`"
+              @click="status[s.id] = opt"
+            >{{ opt }}</button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="submit-section">
-      <p class="submit-hint">Gardé sur le téléphone. Fonctionne sans réseau.</p>
-      <button class="btn btn--navy submit-btn" @click="validate">
-        Valider l'appel · {{ students.length }} élèves
-      </button>
-      <p class="submit-sub">Les parents des {{ absentCount }} absents reçoivent un SMS.</p>
-    </div>
+      <div v-if="submitted" class="success-msg">
+        Appel validé et enregistré.
+      </div>
+
+      <div class="submit-section">
+        <p class="submit-hint">Sauvegardé en ligne.</p>
+        <button class="btn btn--navy submit-btn" :disabled="submitting || submitted" @click="validate">
+          {{ submitting ? 'Envoi…' : submitted ? 'Appel validé' : `Valider l'appel · ${students.length} élèves` }}
+        </button>
+        <p class="submit-sub">Les parents des {{ absentCount }} absents reçoivent un SMS.</p>
+      </div>
+
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useSetupApi } from '@/api/setup'
+import type { StudentListItem } from '@/api/setup'
 
-const students = [
-  { id: 's01', initials: 'AB', name: 'AMISI Bahati', note: '' },
-  { id: 's02', initials: 'BK', name: 'BANZA Kevin',   note: '2e absence ce mois' },
-  { id: 's03', initials: 'IM', name: 'ILUNGA Mireille', note: '' },
-  { id: 's04', initials: 'KJ', name: 'KALALA Jonas',   note: 'Arrivé à 10:22' },
-  { id: 's05', initials: 'KN', name: 'KASONGO Nadine', note: '' },
-  { id: 's06', initials: 'MP', name: 'MULUMBA Prince', note: '' },
-  { id: 's07', initials: 'NS', name: 'NSIMBA Sarah',   note: '' },
-  { id: 's08', initials: 'WC', name: 'WEMBI Christelle', note: '' },
-  { id: 's09', initials: 'LM', name: 'LUBOYA Marc',    note: '' },
-  { id: 's10', initials: 'NT', name: 'NZUZI Thérèse', note: '' },
-  { id: 's11', initials: 'MJ', name: 'MPIANA Joseph',  note: '' },
-  { id: 's12', initials: 'TG', name: 'TSHIMANGA Grace', note: '' },
-  { id: 's13', initials: 'KA', name: 'KAYEMBE Aimé',  note: '' },
-]
+const route = useRoute()
+const api = useSetupApi()
 
-const status = ref<Record<string, 'P' | 'A' | 'R'>>(
-  Object.fromEntries(students.map(s => [s.id, 'P']))
-)
+const loading = ref(true)
+const error = ref('')
+const students = ref<StudentListItem[]>([])
+const sectionName = ref('Appel')
+const classSectionId = route.params['id'] as string
+
+const status = ref<Record<string, 'P' | 'A' | 'R'>>({})
+const submitting = ref(false)
+const submitted = ref(false)
+
+const today = new Date().toISOString().slice(0, 10)
+const timeLabel = new Date().toLocaleTimeString('fr-CD', { hour: '2-digit', minute: '2-digit' })
+
+onMounted(async () => {
+  try {
+    const years = await api.academicYears.list()
+    const year = years.find(y => y.status === 'active') ?? years[0]
+    if (!year) { error.value = 'Aucune année scolaire active'; return }
+
+    const [studs, sections, sheet] = await Promise.all([
+      api.students.list({ classSectionId, yearId: year.id }),
+      api.classSections.list(year.id),
+      api.attendance.sheet(classSectionId, today).catch(() => [] as Awaited<ReturnType<typeof api.attendance.sheet>>),
+    ])
+
+    students.value = studs
+    const sec = sections.find(s => s.id === classSectionId)
+    if (sec) sectionName.value = sec.name
+
+    // Initialize all present, then apply any existing sheet
+    const init: Record<string, 'P' | 'A' | 'R'> = {}
+    for (const s of studs) init[s.id] = 'P'
+    for (const row of sheet) {
+      if (row.status === 'present') init[row.studentId] = 'P'
+      else if (row.status === 'absent') init[row.studentId] = 'A'
+      else if (row.status === 'late') init[row.studentId] = 'R'
+    }
+    status.value = init
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Erreur de chargement'
+  } finally {
+    loading.value = false
+  }
+})
 
 const presentCount = computed(() => Object.values(status.value).filter(v => v === 'P').length)
 const absentCount  = computed(() => Object.values(status.value).filter(v => v === 'A').length)
 const lateCount    = computed(() => Object.values(status.value).filter(v => v === 'R').length)
 
 function markAllPresent() {
-  students.forEach(s => { status.value[s.id] = 'P' })
+  for (const id of students.value.map(s => s.id)) status.value[id] = 'P'
 }
 
-function validate() {
-  // submit logic would go here
+async function validate() {
+  if (submitting.value || submitted.value) return
+  submitting.value = true
+  try {
+    const statusMap: Record<string, 'present' | 'absent' | 'late'> = { P: 'present', A: 'absent', R: 'late' }
+    const records = students.value.map(s => ({
+      studentId: s.id,
+      status: statusMap[status.value[s.id] ?? 'P']!,
+    }))
+    await api.attendance.record({ classSectionId, date: today, records })
+    submitted.value = true
+  } catch {
+    // Retry on next tap — don't clear form
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
@@ -106,6 +160,9 @@ function validate() {
   text-decoration: none;
   font-weight: 500;
 }
+
+.state-msg { padding: 60px; text-align: center; color: #6b7280; font-size: 14px; }
+.state-msg--error { color: #ef4444; }
 
 .page-meta {
   display: flex;
@@ -180,8 +237,7 @@ function validate() {
 }
 
 .student-info { flex: 1; }
-.student-name { font-weight: 600; font-size: 13px; color: #1a1a2e; margin: 0 0 1px; }
-.student-note { font-size: 11px; color: #9a3412; margin: 0; font-weight: 500; }
+.student-name { font-weight: 600; font-size: 13px; color: #1a1a2e; margin: 0; }
 
 .toggle-group { display: flex; gap: 4px; flex-shrink: 0; }
 
@@ -202,7 +258,8 @@ function validate() {
 .toggle-btn--a.toggle-btn--active { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
 .toggle-btn--r.toggle-btn--active { background: #fef9c3; border-color: #fde047; color: #854d0e; }
 
-/* Submit */
+.success-msg { background: #dcfce7; color: #166534; font-size: 14px; font-weight: 600; padding: 12px 16px; border-radius: 8px; text-align: center; }
+
 .submit-section {
   display: flex;
   flex-direction: column;
@@ -215,4 +272,10 @@ function validate() {
 .submit-sub  { font-size: 12px; color: #6b7280; margin: 0; }
 
 .submit-btn { width: 100%; justify-content: center; padding: 14px; font-size: 15px; }
+.submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; }
+.btn--navy { background: var(--k-navy); color: #fff; }
+.btn--ghost { background: transparent; color: var(--k-text); border: 1px solid #d1d5db; }
+.btn--sm { padding: 7px 14px; font-size: 13px; }
 </style>

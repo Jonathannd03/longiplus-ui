@@ -13,67 +13,54 @@
         <h1 class="page-title">Enseignants et affectations</h1>
       </div>
       <div class="step-meta">
-        <span class="meta-chip">{{ teachers.length }} enseignants</span>
-        <span class="meta-chip">{{ headCount }} titulaires</span>
+        <span class="meta-chip">{{ members.length }} membres</span>
         <span class="meta-chip meta-chip--orange">{{ pendingCount }} invitations en attente</span>
       </div>
     </div>
 
-    <!-- Add teacher form -->
+    <!-- Add member form -->
     <div class="add-card">
-      <h3 class="add-card__title">Inviter un enseignant</h3>
+      <h3 class="add-card__title">Inviter un membre de l'équipe</h3>
       <div class="add-form">
         <div class="form-group">
-          <label class="form-label">Numéro de téléphone</label>
-          <input v-model="invite.phone" type="tel" class="form-input" placeholder="+243 8X ••• XX XX" />
+          <label class="form-label">E-mail</label>
+          <input v-model="invite.email" type="email" class="form-input" placeholder="prenom.nom@ecole.cd" />
         </div>
         <div class="form-group">
-          <label class="form-label">Cours enseignés</label>
-          <input v-model="invite.courses" type="text" class="form-input" placeholder="Mathématiques, Physique" />
+          <label class="form-label">Rôle</label>
+          <select v-model="invite.role" class="form-input">
+            <option value="director">Préfet</option>
+            <option value="bursar">Économe</option>
+            <option value="secretary">Secrétaire</option>
+            <option value="teacher">Professeur</option>
+            <option value="class_teacher">Titulaire</option>
+          </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Classes</label>
-          <input v-model="invite.classes" type="text" class="form-input" placeholder="4e Sc. A, 3e Sc." />
-        </div>
-        <button class="btn btn--navy btn--sm" @click="sendInvite">Envoyer l'invitation SMS</button>
+        <button class="btn btn--navy btn--sm" :disabled="inviting || !invite.email" @click="sendInvite">
+          {{ inviting ? 'Envoi…' : 'Envoyer l\'invitation' }}
+        </button>
       </div>
+      <p v-if="inviteError" style="color:#dc2626;font-size:13px;margin-top:8px">{{ inviteError }}</p>
     </div>
 
-    <!-- Teachers table -->
+    <!-- Members table -->
     <div class="table-card">
       <table class="data-table">
         <thead>
           <tr>
-            <th>Enseignant</th>
-            <th>Cours</th>
-            <th>Classes</th>
-            <th>H/sem</th>
+            <th>E-mail</th>
+            <th>Rôle</th>
             <th>Statut</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="teacher in teachers" :key="teacher.id">
+          <tr v-for="m in members" :key="m.id">
+            <td>{{ m.email }}</td>
+            <td>{{ m.role }}</td>
             <td>
-              <div class="teacher-cell">
-                <span class="teacher-initials">{{ teacher.initials }}</span>
-                <div>
-                  <p class="teacher-name">{{ teacher.shortName }}</p>
-                  <p v-if="headClass(teacher)" class="teacher-sub">Titulaire {{ headClass(teacher) }}</p>
-                </div>
-              </div>
-            </td>
-            <td class="td-wrap">{{ teacher.courses.join(', ') }}</td>
-            <td>{{ teacher.classIds.length }} classe{{ teacher.classIds.length > 1 ? 's' : '' }}</td>
-            <td>{{ teacher.hoursPerWeek }}</td>
-            <td>
-              <StatusBadge :variant="teacher.status === 'active' ? 'success' : 'warning'">
-                {{ teacher.status === 'active' ? 'Actif' : 'En attente' }}
+              <StatusBadge :variant="m.status === 'active' ? 'success' : 'warning'">
+                {{ m.status === 'active' ? 'Actif' : 'En attente' }}
               </StatusBadge>
-            </td>
-            <td>
-              <button v-if="teacher.status === 'pending'" class="btn-link">Renvoyer</button>
-              <button v-else class="btn-link btn-link--gray">Modifier</button>
             </td>
           </tr>
         </tbody>
@@ -88,31 +75,41 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchoolStore } from '@/stores/school'
-import { useClassesStore } from '@/stores/classes'
+import { useSetupApi } from '@/api/setup'
+import type { Member } from '@/api/setup'
 import StatusBadge from '@/components/StatusBadge.vue'
 
 const schoolStore = useSchoolStore()
-const classesStore = useClassesStore()
 const router = useRouter()
+const api = useSetupApi()
 
-const teachers = computed(() => classesStore.teachers)
-const pendingCount = computed(() => teachers.value.filter(t => t.status === 'pending').length)
-const headCount = computed(() => teachers.value.filter(t => t.headOfClassId).length)
+const members = ref<Member[]>([])
+const inviting = ref(false)
+const inviteError = ref('')
+const invite = reactive({ email: '', role: 'teacher' })
 
-const invite = reactive({ phone: '', courses: '', classes: '' })
+const pendingCount = computed(() => members.value.filter(m => m.status === 'invited').length)
 
-function headClass(teacher: typeof teachers.value[number]) {
-  if (!teacher.headOfClassId) return ''
-  return classesStore.getClassById(teacher.headOfClassId)?.name ?? ''
-}
+onMounted(async () => {
+  try { members.value = await api.members.list() } catch { /* ignore */ }
+})
 
-function sendInvite() {
-  invite.phone = ''
-  invite.courses = ''
-  invite.classes = ''
+async function sendInvite() {
+  if (!invite.email) return
+  inviting.value = true
+  inviteError.value = ''
+  try {
+    const m = await api.members.invite({ email: invite.email, role: invite.role })
+    members.value.push(m)
+    invite.email = ''
+  } catch (e) {
+    inviteError.value = 'Erreur lors de l\'envoi. Réessayez.'
+  } finally {
+    inviting.value = false
+  }
 }
 
 function save() {

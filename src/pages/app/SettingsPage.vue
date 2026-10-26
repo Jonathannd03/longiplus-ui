@@ -6,81 +6,148 @@
 
       <div class="tabs">
         <button
-          v-for="tab in tabs"
-          :key="tab.id"
+          v-for="t in tabs"
+          :key="t.id"
           class="tab"
-          :class="{ 'tab--active': activeTab === tab.id }"
-          @click="activeTab = tab.id"
-        >{{ tab.label }}</button>
+          :class="{ 'tab--active': activeTab === t.id }"
+          @click="activeTab = t.id"
+        >{{ t.label }}</button>
       </div>
 
       <!-- Tab: Équipe -->
       <div v-if="activeTab === 'team'">
-        <!-- Invite banner -->
         <div class="invite-banner">
           <div>
             <p class="invite-banner__title">Inviter un membre de l'équipe</p>
-            <p class="invite-banner__sub">Préfet adjoint, comptable, enseignant titulaire de classe…</p>
+            <p class="invite-banner__sub">Préfet adjoint, économe, enseignant titulaire de classe…</p>
           </div>
           <div class="invite-banner__form">
-            <input type="tel" placeholder="+243 81 XXX XX XX" class="invite-input" />
-            <select class="invite-select">
-              <option>Enseignant</option>
-              <option>Préfet adjoint</option>
-              <option>Comptable</option>
-              <option>Secrétaire</option>
+            <input v-model="inviteEmail" type="email" placeholder="prenom.nom@ecole.cd" class="invite-input" />
+            <select v-model="inviteRole" class="invite-select">
+              <option value="teacher">Professeur</option>
+              <option value="class_teacher">Titulaire</option>
+              <option value="director">Préfet</option>
+              <option value="bursar">Économe</option>
+              <option value="secretary">Secrétaire</option>
             </select>
-            <button class="btn btn--yellow">+ Inviter</button>
+            <button class="btn btn--yellow" :disabled="inviting || !inviteEmail" @click="sendInvite">
+              {{ inviting ? 'Envoi…' : '+ Inviter' }}
+            </button>
           </div>
+          <p v-if="inviteError" class="form-error">{{ inviteError }}</p>
         </div>
 
-        <!-- Team table -->
         <div class="card">
           <table class="table">
             <thead>
               <tr>
-                <th>Membre</th>
+                <th>E-mail</th>
                 <th>Rôle</th>
-                <th>Classes assignées</th>
-                <th>Dernière connexion</th>
                 <th>Statut</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="member in teamMembers" :key="member.id">
+              <tr v-for="m in members" :key="m.id">
+                <td>{{ m.email }}</td>
+                <td class="td--muted">{{ roleLabel(m.role) }}</td>
                 <td>
-                  <div class="member-cell">
-                    <div class="avatar">{{ member.initials }}</div>
-                    <div>
-                      <p class="member-name">{{ member.name }}</p>
-                      <p class="member-phone">{{ member.phone }}</p>
-                    </div>
-                  </div>
-                </td>
-                <td class="td--muted">{{ member.role }}</td>
-                <td class="td--muted">{{ member.classes || '—' }}</td>
-                <td class="td--muted">{{ member.lastSeen }}</td>
-                <td>
-                  <span class="badge" :class="member.status === 'active' ? 'badge--success' : 'badge--warning'">
-                    {{ member.status === 'active' ? 'Actif' : 'Invitation envoyée' }}
+                  <span class="badge" :class="m.status === 'active' ? 'badge--success' : 'badge--warning'">
+                    {{ m.status === 'active' ? 'Actif' : 'Invitation envoyée' }}
                   </span>
                 </td>
-                <td>
-                  <button v-if="member.id !== 'u1'" class="link-btn link-btn--muted">Retirer</button>
-                  <span v-else class="td--muted" style="font-size:12px">Vous</span>
-                </td>
+              </tr>
+              <tr v-if="members.length === 0 && !loadingMembers">
+                <td colspan="3" class="empty-cell">Aucun membre.</td>
+              </tr>
+              <tr v-if="loadingMembers">
+                <td colspan="3" class="empty-cell">Chargement…</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
 
+      <!-- Tab: Comptes de paiement -->
+      <div v-if="activeTab === 'payout'">
+        <!-- Create form -->
+        <div class="invite-banner">
+          <div>
+            <p class="invite-banner__title">Ajouter un compte de paiement</p>
+            <p class="invite-banner__sub">Mobile money ou compte bancaire pour recevoir les frais scolaires.</p>
+          </div>
+          <div class="invite-banner__form">
+            <select v-model="newAccount.kind" class="invite-select">
+              <option value="mobile_money">Mobile Money</option>
+              <option value="bank">Banque</option>
+            </select>
+            <input
+              v-if="newAccount.kind === 'mobile_money'"
+              v-model="newAccount.operator"
+              class="invite-input"
+              placeholder="M-Pesa, Orange, Airtel…"
+            />
+            <input v-model="newAccount.numberMasked" class="invite-input" placeholder="****1234" />
+            <button class="btn btn--yellow" :disabled="creatingAccount || !newAccount.numberMasked" @click="createAccount">
+              {{ creatingAccount ? 'Ajout…' : '+ Ajouter' }}
+            </button>
+          </div>
+          <p v-if="createAccountError" class="form-error">{{ createAccountError }}</p>
+        </div>
+
+        <div class="card">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Opérateur / Banque</th>
+                <th>Numéro</th>
+                <th>Statut</th>
+                <th>Actif dès</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="acc in accounts" :key="acc.id">
+                <td>{{ acc.kind === 'mobile_money' ? 'Mobile Money' : 'Banque' }}</td>
+                <td class="td--muted">{{ acc.operator || '—' }}</td>
+                <td>{{ acc.numberMasked }}</td>
+                <td>
+                  <span class="badge" :class="accountBadgeClass(acc.status)">
+                    {{ accountStatusLabel(acc.status) }}
+                  </span>
+                </td>
+                <td class="td--muted">{{ acc.activatesAt ? formatDate(acc.activatesAt) : '—' }}</td>
+                <td>
+                  <button
+                    v-if="acc.status === 'pending' && !acc.approvedBy"
+                    class="link-btn"
+                    :disabled="approvingId === acc.id"
+                    @click="approveAccount(acc.id)"
+                  >
+                    {{ approvingId === acc.id ? '…' : 'Approuver' }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="accounts.length === 0 && !loadingAccounts">
+                <td colspan="6" class="empty-cell">Aucun compte de paiement.</td>
+              </tr>
+              <tr v-if="loadingAccounts">
+                <td colspan="6" class="empty-cell">Chargement…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="info-box info-box-blue" style="margin-top:16px">
+          <span class="info-icon">ℹ</span>
+          <span><strong>Règle BR-07</strong> : après approbation, le compte devient actif 24 h plus tard. Cela permet au promoteur de vérifier avant toute transaction.</span>
+        </div>
+      </div>
+
       <!-- Tab: Année scolaire -->
       <div v-if="activeTab === 'year'">
         <div class="two-col">
-          <!-- Period calendar -->
-          <div class="card">
+          <div class="card" style="padding:20px">
             <h3 class="card__title">Calendrier des périodes</h3>
             <div class="period-list">
               <div v-for="period in schoolStore.periods" :key="period.id" class="period-row">
@@ -103,8 +170,7 @@
             </div>
           </div>
 
-          <!-- Grade scale -->
-          <div class="card">
+          <div class="card" style="padding:20px">
             <h3 class="card__title">Barème de notation</h3>
             <div class="scale-table">
               <div class="scale-row scale-row--head">
@@ -123,21 +189,19 @@
         </div>
       </div>
 
-      <!-- Tab: École et année (placeholder) -->
+      <!-- Tab: École (placeholder) -->
       <div v-if="activeTab === 'school'">
         <div class="card placeholder-card">
-          <div class="placeholder-icon">🏫</div>
           <p class="placeholder-title">Informations de l'école</p>
-          <p class="placeholder-sub">Nom officiel, adresse, province, numéro EPSP — disponible en Phase 2.</p>
+          <p class="placeholder-sub">Nom officiel, adresse, province, numéro EPSP — disponible en M3.</p>
         </div>
       </div>
 
-      <!-- Tab: Rôles et droits (placeholder) -->
+      <!-- Tab: Rôles (placeholder) -->
       <div v-if="activeTab === 'roles'">
         <div class="card placeholder-card">
-          <div class="placeholder-icon">🔐</div>
           <p class="placeholder-title">Gestion des rôles</p>
-          <p class="placeholder-sub">Permissions granulaires par rôle — disponible en Phase 2.</p>
+          <p class="placeholder-sub">Permissions granulaires par rôle — disponible en M7.</p>
         </div>
       </div>
     </div>
@@ -145,34 +209,120 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useSchoolStore } from '@/stores'
+import { useSetupApi } from '@/api/setup'
+import type { Member, PayoutAccount } from '@/api/setup'
 
 const schoolStore = useSchoolStore()
+const api = useSetupApi()
 
 const activeTab = ref('team')
 
 const tabs = [
   { id: 'team', label: 'Équipe' },
+  { id: 'payout', label: 'Comptes de paiement' },
   { id: 'year', label: 'Année scolaire' },
   { id: 'school', label: 'École et année' },
   { id: 'roles', label: 'Rôles et droits' },
 ]
 
-const teamMembers = [
-  { id: 'u1', name: 'J. Mukendi', initials: 'JM', phone: '+243 81 ••• 34 56', role: 'Préfet', classes: 'Toutes', lastSeen: 'Il y a 2 min', status: 'active' },
-  { id: 'u2', name: 'F. Ngoy', initials: 'FN', phone: '+243 99 ••• 12 34', role: 'Enseignant', classes: '4e Sc. A, 5e Sc. B', lastSeen: '13 janv. 2027', status: 'active' },
-  { id: 'u3', name: 'B. Tshimanga', initials: 'BT', phone: '+243 81 ••• 78 90', role: 'Préfet adjoint', classes: '—', lastSeen: '15 janv. 2027', status: 'active' },
-  { id: 'u4', name: 'M. Kabeya', initials: 'MK', phone: '+243 97 ••• 45 67', role: 'Enseignant', classes: 'En attente', lastSeen: 'Jamais', status: 'pending' },
-]
+// --- Team tab ---
+const members = ref<Member[]>([])
+const loadingMembers = ref(false)
+const inviteEmail = ref('')
+const inviteRole = ref('teacher')
+const inviting = ref(false)
+const inviteError = ref('')
 
-const gradeScale = [
-  { label: 'Grande distinction', min: 80, color: '#166534' },
-  { label: 'Distinction', min: 70, color: '#0369a1' },
-  { label: 'Satisfaction', min: 60, color: '#374151' },
-  { label: 'Réussite', min: 50, color: '#854d0e' },
-  { label: 'Échec', min: 0, color: '#991b1b' },
-]
+// --- Payout accounts tab ---
+const accounts = ref<PayoutAccount[]>([])
+const loadingAccounts = ref(false)
+const newAccount = ref({ kind: 'mobile_money' as 'mobile_money' | 'bank', operator: '', numberMasked: '' })
+const creatingAccount = ref(false)
+const createAccountError = ref('')
+const approvingId = ref<string | null>(null)
+
+onMounted(async () => {
+  loadingMembers.value = true
+  loadingAccounts.value = true
+  const [mems, accs] = await Promise.all([
+    api.members.list().catch(() => [] as Member[]),
+    api.payoutAccounts.list().catch(() => [] as PayoutAccount[]),
+  ])
+  members.value = mems
+  accounts.value = accs
+  loadingMembers.value = false
+  loadingAccounts.value = false
+})
+
+async function sendInvite() {
+  if (!inviteEmail.value) return
+  inviting.value = true
+  inviteError.value = ''
+  try {
+    const m = await api.members.invite({ email: inviteEmail.value, role: inviteRole.value })
+    members.value.push(m)
+    inviteEmail.value = ''
+  } catch {
+    inviteError.value = 'Erreur lors de l\'envoi. Réessayez.'
+  } finally {
+    inviting.value = false
+  }
+}
+
+async function createAccount() {
+  if (!newAccount.value.numberMasked) return
+  creatingAccount.value = true
+  createAccountError.value = ''
+  try {
+    const accountDto: Parameters<typeof api.payoutAccounts.create>[0] = {
+      kind: newAccount.value.kind,
+      numberMasked: newAccount.value.numberMasked,
+    }
+    if (newAccount.value.operator) accountDto.operator = newAccount.value.operator
+    const created = await api.payoutAccounts.create(accountDto)
+    accounts.value.push(created)
+    newAccount.value = { kind: 'mobile_money', operator: '', numberMasked: '' }
+  } catch {
+    createAccountError.value = 'Erreur lors de l\'ajout. Réessayez.'
+  } finally {
+    creatingAccount.value = false
+  }
+}
+
+async function approveAccount(id: string) {
+  approvingId.value = id
+  try {
+    const updated = await api.payoutAccounts.approve(id)
+    const idx = accounts.value.findIndex(a => a.id === id)
+    if (idx !== -1) accounts.value[idx] = updated
+  } catch { /* ignore */ }
+  finally { approvingId.value = null }
+}
+
+// --- Helpers ---
+const roleLabels: Record<string, string> = {
+  owner: 'Promoteur', director: 'Préfet', bursar: 'Économe',
+  secretary: 'Secrétaire', teacher: 'Professeur', class_teacher: 'Titulaire',
+}
+function roleLabel(role: string) { return roleLabels[role] ?? role }
+
+function accountStatusLabel(status: string) {
+  if (status === 'active') return 'Actif'
+  if (status === 'pending') return 'En attente'
+  return 'Suspendu'
+}
+
+function accountBadgeClass(status: string) {
+  if (status === 'active') return 'badge--success'
+  if (status === 'pending') return 'badge--warning'
+  return 'badge--neutral'
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('fr-CD', { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
 function periodBadgeClass(status: string) {
   if (status === 'locked') return 'badge--neutral'
@@ -185,6 +335,14 @@ function periodLabel(status: string) {
   if (status === 'open') return 'En cours'
   return 'À venir'
 }
+
+const gradeScale = [
+  { label: 'Grande distinction', min: 80, color: '#166534' },
+  { label: 'Distinction', min: 70, color: '#0369a1' },
+  { label: 'Satisfaction', min: 60, color: '#374151' },
+  { label: 'Réussite', min: 50, color: '#854d0e' },
+  { label: 'Échec', min: 0, color: '#991b1b' },
+]
 </script>
 
 <style scoped>
@@ -197,30 +355,28 @@ function periodLabel(status: string) {
 .tab { padding: 9px 16px; background: none; border: none; font-size: 13.5px; font-weight: 500; color: var(--k-text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .15s; }
 .tab--active { color: var(--k-navy); font-weight: 700; border-bottom-color: var(--k-navy); }
 
-.invite-banner { background: var(--k-sky); border: 1px solid #c7d9f5; border-radius: var(--k-radius); padding: 16px 20px; display: flex; align-items: center; gap: 20px; margin-bottom: 16px; flex-wrap: wrap; }
+.invite-banner { background: var(--k-sky); border: 1px solid #c7d9f5; border-radius: var(--k-radius); padding: 16px 20px; margin-bottom: 16px; }
 .invite-banner__title { font-size: 14px; font-weight: 600; color: var(--k-navy); margin: 0 0 2px; }
-.invite-banner__sub { font-size: 12px; color: var(--k-text-muted); margin: 0; }
-.invite-banner__form { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 280px; }
-.invite-input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 7px; font-size: 13px; }
+.invite-banner__sub { font-size: 12px; color: var(--k-text-muted); margin: 0 0 10px; }
+.invite-banner__form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.invite-input { flex: 1; min-width: 140px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 7px; font-size: 13px; background: #fff; }
 .invite-select { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 7px; font-size: 13px; background: #fff; }
+.form-error { font-size: 13px; color: #dc2626; margin: 8px 0 0; }
 
-.btn { padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; white-space: nowrap; }
+.btn { padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; white-space: nowrap; font-family: inherit; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn--yellow { background: var(--k-yellow); color: #1a1a2e; }
 
-.card { background: #fff; border: 1px solid var(--k-border); border-radius: var(--k-radius); padding: 20px; }
+.card { background: #fff; border: 1px solid var(--k-border); border-radius: var(--k-radius); }
 .card__title { font-family: 'Poppins', sans-serif; font-size: 15px; font-weight: 600; color: var(--k-navy); margin: 0 0 16px; }
 .card__note { font-size: 11.5px; color: var(--k-text-muted); margin: 12px 0 0; }
 
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--k-text-muted); padding: 0 12px 10px; border-bottom: 1px solid var(--k-border); }
+.table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--k-text-muted); padding: 12px; border-bottom: 1px solid var(--k-border); }
 .table td { padding: 12px; border-bottom: 1px solid var(--k-border); vertical-align: middle; }
 .table tbody tr:last-child td { border-bottom: none; }
 .td--muted { color: var(--k-text-muted); font-size: 12.5px; }
-
-.member-cell { display: flex; align-items: center; gap: 10px; }
-.avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--k-navy); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.member-name { font-size: 13px; font-weight: 600; color: var(--k-navy); margin: 0 0 2px; }
-.member-phone { font-size: 12px; color: var(--k-text-muted); margin: 0; font-family: 'IBM Plex Mono', monospace; }
+.empty-cell { color: #9ca3af; font-size: 13px; text-align: center; padding: 24px 12px !important; }
 
 .badge { display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
 .badge--success { background: #dcfce7; color: #166534; }
@@ -228,8 +384,12 @@ function periodLabel(status: string) {
 .badge--neutral { background: #f3f4f6; color: #374151; }
 .badge--info { background: var(--k-sky); color: var(--k-navy); }
 
-.link-btn { background: none; border: none; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; }
-.link-btn--muted { color: var(--k-text-muted); }
+.link-btn { background: none; border: none; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; color: var(--k-blue); }
+.link-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.info-box { display: flex; gap: 12px; border-radius: 8px; padding: 14px 16px; font-size: 13px; }
+.info-box-blue { background: var(--k-sky); color: var(--k-navy); }
+.info-icon { font-size: 16px; flex-shrink: 0; }
 
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
@@ -243,7 +403,7 @@ function periodLabel(status: string) {
 .period-dot--upcoming { background: #d1d5db; }
 .period-name { font-size: 13px; font-weight: 600; color: var(--k-navy); }
 
-.scale-table { display: flex; flex-direction: column; gap: 0; }
+.scale-table { display: flex; flex-direction: column; }
 .scale-row { display: grid; grid-template-columns: 1.5fr 1fr 24px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--k-border); }
 .scale-row:last-child { border-bottom: none; }
 .scale-row--head span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--k-text-muted); }
@@ -252,7 +412,8 @@ function periodLabel(status: string) {
 .scale-dot { width: 12px; height: 12px; border-radius: 50%; }
 
 .placeholder-card { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center; }
-.placeholder-icon { font-size: 40px; margin-bottom: 12px; }
 .placeholder-title { font-family: 'Poppins', sans-serif; font-size: 16px; font-weight: 600; color: var(--k-navy); margin: 0 0 6px; }
 .placeholder-sub { font-size: 13px; color: var(--k-text-muted); margin: 0; }
+
+h3 { font-family: 'Poppins', sans-serif; font-size: 16px; font-weight: 600; color: var(--k-navy); margin: 0 0 16px; }
 </style>

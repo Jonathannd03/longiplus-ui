@@ -94,9 +94,12 @@
           <p class="form-hint mt-8">LongiPlus prépare les classes et les cours de chaque option à l'étape 3.</p>
         </div>
 
+        <p v-if="error" class="form-error">{{ error }}</p>
         <div class="step-actions">
           <RouterLink to="/app/onboarding" class="btn btn--ghost">Annuler</RouterLink>
-          <button class="btn btn--navy" @click="save">Enregistrer et continuer</button>
+          <button class="btn btn--navy" :disabled="saving" @click="save">
+            {{ saving ? 'Enregistrement…' : 'Enregistrer et continuer' }}
+          </button>
         </div>
       </div>
 
@@ -129,21 +132,27 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchoolStore } from '@/stores/school'
+import { useSetupApi } from '@/api/setup'
 
 const schoolStore = useSchoolStore()
 const router = useRouter()
+const api = useSetupApi()
+
+const saving = ref(false)
+const error = ref('')
 
 const form = reactive({
   name: schoolStore.school.name,
   shortName: 'CS MWINDA',
   epst: '',
+  province: 'Kinshasa',
   city: 'Kinshasa',
   commune: schoolStore.school.commune,
   address: '',
-  phone: schoolStore.school.agentPhone,
+  phone: '',
   email: '',
   levels: ['primaire', 'secondaire'] as string[],
 })
@@ -155,11 +164,26 @@ const levels = [
   { id: 'secondaire_7_8', label: 'Secondaire · 7e et 8e' },
 ]
 
-function save() {
-  const step = schoolStore.onboardingSteps.find(s => s.id === 1)
-  if (step) step.done = true
-  schoolStore.onboardingStep = 2
-  router.push('/app/onboarding')
+async function save() {
+  saving.value = true
+  error.value = ''
+  try {
+    await api.school.update({
+      name: form.name,
+      province: form.province,
+      city: form.city,
+      address: form.address || undefined,
+      contactPhone: form.phone || undefined,
+    })
+    const step = schoolStore.onboardingSteps.find(s => s.id === 1)
+    if (step) step.done = true
+    schoolStore.onboardingStep = 2
+    router.push('/app/onboarding')
+  } catch (e) {
+    error.value = 'Erreur lors de la sauvegarde. Réessayez.'
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -244,6 +268,7 @@ function save() {
 .form-input:focus { border-color: var(--k-blue); }
 
 .form-hint { font-size: 12px; color: #9ca3af; margin: 0; }
+.form-error { font-size: 13px; color: #dc2626; margin: 0 0 12px; }
 .mt-8 { margin-top: 8px; }
 
 .char-count { font-weight: 400; color: #9ca3af; margin-left: auto; }

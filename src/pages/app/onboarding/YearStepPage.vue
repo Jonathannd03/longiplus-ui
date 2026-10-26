@@ -8,54 +8,86 @@
     </div>
 
     <p class="eyebrow">{{ fromOnboarding ? 'ÉTAPE 2 SUR 6 · ' : '' }}ANNÉE SCOLAIRE</p>
-    <h1 class="page-title">Année {{ school.year }}</h1>
+    <h1 class="page-title">Année scolaire</h1>
+
+    <!-- Loading -->
+    <div v-if="loading" class="section-card">
+      <p style="color:#9ca3af;font-size:14px">Chargement…</p>
+    </div>
+
+    <!-- Create form (no year yet) -->
+    <div v-else-if="showCreateForm" class="section-card">
+      <h3 class="section-title">Créer l'année scolaire</h3>
+      <div class="form-row-3" style="margin-bottom:16px">
+        <div class="bareme-item">
+          <label class="bareme-item__label" style="display:block;margin-bottom:6px">Libellé</label>
+          <input v-model="newYear.label" class="form-input" placeholder="2025-2026" style="width:100%;box-sizing:border-box" />
+        </div>
+        <div class="bareme-item">
+          <label class="bareme-item__label" style="display:block;margin-bottom:6px">Début</label>
+          <input v-model="newYear.startsOn" type="date" class="form-input" style="width:100%;box-sizing:border-box" />
+        </div>
+        <div class="bareme-item">
+          <label class="bareme-item__label" style="display:block;margin-bottom:6px">Fin</label>
+          <input v-model="newYear.endsOn" type="date" class="form-input" style="width:100%;box-sizing:border-box" />
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <label class="bareme-item__label" style="display:block;margin-bottom:8px">Type de barème</label>
+        <div style="display:flex;gap:12px">
+          <label class="level-chip" :class="{ 'level-chip--active': newYear.gradingType === 'primary' }">
+            <input type="radio" value="primary" v-model="newYear.gradingType" style="display:none" />
+            Primaire (3 trimestres)
+          </label>
+          <label class="level-chip" :class="{ 'level-chip--active': newYear.gradingType === 'secondary' }">
+            <input type="radio" value="secondary" v-model="newYear.gradingType" style="display:none" />
+            Secondaire (2 semestres)
+          </label>
+        </div>
+      </div>
+      <p v-if="error" style="color:#dc2626;font-size:13px;margin-bottom:12px">{{ error }}</p>
+      <button class="btn btn--navy" :disabled="saving || !newYear.label || !newYear.startsOn || !newYear.endsOn" @click="createYear">
+        {{ saving ? 'Création…' : 'Créer et générer le calendrier' }}
+      </button>
+    </div>
 
     <!-- Periods calendar -->
-    <div class="section-card">
+    <div v-else class="section-card">
       <div class="section-header">
         <h3 class="section-title">Calendrier des périodes</h3>
         <span class="school-year-tag">Du 1er septembre 2026 au 2 juillet 2027</span>
       </div>
 
       <div class="semester-block">
-        <p class="semester-label">Premier semestre</p>
+        <p class="semester-label">{{ yearDetail?.gradingType === 'primary' ? 'Premier trimestre' : 'Premier semestre' }}</p>
         <div class="periods-row">
           <div
             v-for="period in semester1"
             :key="period.id"
-            class="period-card"
-            :class="`period-card--${period.status}`"
+            class="period-card period-card--open"
           >
             <div class="period-card__header">
-              <span class="period-card__name">{{ period.name }}</span>
-              <span class="period-card__badge" :class="`badge--${period.status}`">
-                {{ statusLabel(period.status) }}
-              </span>
+              <span class="period-card__name">{{ period.label }}</span>
+              <span class="period-card__badge badge--open">{{ statusLabel(period.status) }}</span>
             </div>
-            <p class="period-card__dates">{{ period.startDate }} au {{ period.endDate }}</p>
-            <p v-if="period.closingDate" class="period-card__closing">
-              Clôture des notes le {{ period.closingDate }}
-            </p>
+            <span class="period-kind-badge">{{ period.kind === 'exam' ? 'Examen' : 'Période' }}</span>
           </div>
         </div>
       </div>
 
-      <div class="semester-block">
-        <p class="semester-label">Second semestre</p>
+      <div v-if="semester2.length > 0" class="semester-block">
+        <p class="semester-label">{{ yearDetail?.gradingType === 'primary' ? 'Deuxième / Troisième trimestre' : 'Second semestre' }}</p>
         <div class="periods-row">
           <div
             v-for="period in semester2"
             :key="period.id"
-            class="period-card"
-            :class="`period-card--${period.status}`"
+            class="period-card period-card--upcoming"
           >
             <div class="period-card__header">
-              <span class="period-card__name">{{ period.name }}</span>
-              <span class="period-card__badge" :class="`badge--${period.status}`">
-                {{ statusLabel(period.status) }}
-              </span>
+              <span class="period-card__name">{{ period.label }}</span>
+              <span class="period-card__badge badge--upcoming">À venir</span>
             </div>
-            <p class="period-card__dates">{{ period.startDate }} au {{ period.endDate }}</p>
+            <span class="period-kind-badge">{{ period.kind === 'exam' ? 'Examen' : 'Période' }}</span>
           </div>
         </div>
       </div>
@@ -115,28 +147,73 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSchoolStore } from '@/stores/school'
+import { useSetupApi } from '@/api/setup'
+import type { AcademicYearDetail } from '@/api/setup'
 
 const schoolStore = useSchoolStore()
 const router = useRouter()
 const route = useRoute()
+const api = useSetupApi()
 
-const school = computed(() => schoolStore.school)
+const fromOnboarding = computed(() => route.path.startsWith('/app/onboarding'))
 const scale = computed(() => schoolStore.gradeScale)
 const conductLabels = computed(() => schoolStore.conductLabels)
 const holidays = computed(() => schoolStore.holidays)
 
-const fromOnboarding = computed(() => route.path.startsWith('/app/onboarding'))
+const yearDetail = ref<AcademicYearDetail | null>(null)
+const loading = ref(false)
+const saving = ref(false)
+const error = ref('')
+const showCreateForm = ref(false)
 
-const semester1 = computed(() => schoolStore.periods.filter(p => p.semester === 1))
-const semester2 = computed(() => schoolStore.periods.filter(p => p.semester === 2))
+const newYear = reactive({
+  label: '',
+  startsOn: '',
+  endsOn: '',
+  gradingType: 'secondary' as 'primary' | 'secondary',
+})
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    const years = await api.academicYears.list()
+    if (years.length > 0) {
+      yearDetail.value = await api.academicYears.get(years[0]!.id)
+    } else {
+      showCreateForm.value = true
+    }
+  } catch { /* ignore, show create form */ showCreateForm.value = true }
+  finally { loading.value = false }
+})
+
+const semester1 = computed(() =>
+  (yearDetail.value?.periods ?? []).filter(p => p.semesterOrTrimester === 1)
+)
+const semester2 = computed(() =>
+  (yearDetail.value?.periods ?? []).filter(p => p.semesterOrTrimester === 2)
+)
 
 function statusLabel(status: string) {
   if (status === 'locked') return 'Verrouillée'
   if (status === 'open') return 'Ouverte'
   return 'À venir'
+}
+
+async function createYear() {
+  saving.value = true
+  error.value = ''
+  try {
+    const created = await api.academicYears.create(newYear)
+    yearDetail.value = await api.academicYears.get(created.id)
+    showCreateForm.value = false
+  } catch (e) {
+    error.value = 'Erreur lors de la création. Réessayez.'
+  } finally {
+    saving.value = false
+  }
 }
 
 function save() {
@@ -261,6 +338,11 @@ function save() {
 
 .period-card__dates   { font-size: 12px; color: #6b7280; margin: 0 0 2px; }
 .period-card__closing { font-size: 11px; color: var(--k-blue); margin: 0; font-weight: 500; }
+.period-kind-badge { font-size: 11px; color: #9ca3af; margin-top: 4px; display: block; }
+.form-input { padding: 9px 12px; border: 1px solid var(--k-border, #e5e7eb); border-radius: 7px; font-size: 14px; outline: none; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.level-chip { padding: 7px 14px; border: 1.5px solid var(--k-border, #e5e7eb); border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.15s; user-select: none; }
+.level-chip--active { border-color: var(--k-navy); background: var(--k-sky); color: var(--k-navy); font-weight: 600; }
 
 .bareme-grid {
   display: grid;

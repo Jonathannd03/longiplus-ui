@@ -10,8 +10,9 @@ export function createApiClient(store: ReturnType<typeof useAuthStore>) {
     const token = store.token;
     const schoolId = store.schoolId;
 
+    const isFormData = init.body instanceof FormData;
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      ...(!isFormData && { 'Content-Type': 'application/json' }),
       ...(init.headers as Record<string, string>),
     };
     if (token) headers['Authorization'] = `Bearer ${token}`;
