@@ -47,7 +47,7 @@ const router = createRouter({
       ],
     },
     { path: '/b/:token', component: () => import('@/pages/BulletinPublicPage.vue') },
-    { path: '/activate/:token', component: () => import('@/pages/ActivationPage.vue') },
+    { path: '/activate', component: () => import('@/pages/ActivationPage.vue') },
   ],
 });
 
