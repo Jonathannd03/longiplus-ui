@@ -9,7 +9,7 @@ export type StaffRole =
   | 'secretary'
   | 'teacher'
   | 'class_teacher'
-  | 'longiplus_admin';
+  | 'kelasi_admin';
 
 export interface AuthUser {
   keycloakUserId: string;
