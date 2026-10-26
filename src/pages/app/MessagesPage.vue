@@ -96,7 +96,7 @@
           <div class="card">
             <p class="eyebrow eyebrow--sm">APERÇU CHEZ LE PARENT</p>
             <div class="sms-bubble">
-              <p class="sms-bubble__sender">KELASI</p>
+              <p class="sms-bubble__sender">LONGIPLUS</p>
               <p class="sms-bubble__text">{{ messageText || '…' }}</p>
             </div>
           </div>

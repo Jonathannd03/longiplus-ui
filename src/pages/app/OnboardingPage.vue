@@ -35,6 +35,10 @@
           </div>
           <div class="step__action">
             <RouterLink v-if="step.done" :to="stepRoute(step.id)" class="step__modify">Modifier</RouterLink>
+            <div v-else-if="step.id === schoolStore.onboardingStep && step.id === 4" class="step__action-group">
+              <RouterLink to="/app/students/import" class="btn btn--navy step__continue">Importer Excel</RouterLink>
+              <RouterLink to="/app/students/new" class="step__modify">ou inscrire un élève</RouterLink>
+            </div>
             <RouterLink
               v-else-if="step.id === schoolStore.onboardingStep"
               :to="stepRoute(step.id)"
@@ -209,6 +213,7 @@ function skipToApp() {
 }
 
 .step__pending-label { font-size: 12px; color: #9ca3af; white-space: nowrap; }
+.step__action-group { display: flex; align-items: center; gap: 12px; }
 
 .mt-20 { margin-top: 20px; }
 

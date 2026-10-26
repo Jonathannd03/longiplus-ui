@@ -4,6 +4,18 @@
       <p class="breadcrumb"><RouterLink to="/app/students">Élèves et familles</RouterLink> › Importer depuis Excel</p>
       <h1 class="page-title">Importation des élèves</h1>
 
+      <div v-if="noYear" class="alert-warn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Aucune année scolaire configurée. <RouterLink to="/app/onboarding/year" class="alert-link">Configurer l'année</RouterLink> avant d'importer des élèves.
+      </div>
+
+      <div class="import-options">
+        <RouterLink to="/app/students/new" class="option-link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Inscrire un élève manuellement
+        </RouterLink>
+      </div>
+
       <div class="steps-bar">
         <div v-for="(step, i) in steps" :key="i" class="step-item" :class="{ 'step-item--active': currentStep === i, 'step-item--done': currentStep > i }">
           <div class="step-circle">
@@ -17,6 +29,31 @@
 
       <!-- Step 0: Upload -->
       <div v-if="currentStep === 0" class="step-panel">
+        <div class="format-guide">
+          <p class="format-guide__title">Colonnes attendues dans votre fichier</p>
+          <div class="format-cols">
+            <div class="format-col format-col--required">
+              <span class="format-col__badge">Obligatoire</span>
+              <ul>
+                <li><code>Nom</code></li>
+                <li><code>Post-nom</code></li>
+                <li><code>Prénom</code></li>
+                <li><code>Sexe</code> <span class="format-hint">M ou F</span></li>
+                <li><code>Date de naissance</code> <span class="format-hint">AAAA-MM-JJ ou JJ/MM/AAAA</span></li>
+                <li><code>Classe</code> <span class="format-hint">nom exact de la classe</span></li>
+              </ul>
+            </div>
+            <div class="format-col format-col--optional">
+              <span class="format-col__badge">Facultatif</span>
+              <ul>
+                <li><code>Lieu de naissance</code></li>
+                <li><code>Nom du parent</code></li>
+                <li><code>Téléphone du parent</code> <span class="format-hint">+243…</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <input ref="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden-input" @change="onFileChange" />
         <div
           class="upload-zone"
@@ -112,11 +149,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useSetupApi } from '@/api/setup'
+import { useAcademicYears } from '@/composables/queries'
 import type { ImportPreview, ImportResult } from '@/api/setup'
 
 const api = useSetupApi()
+const queryClient = useQueryClient()
+
+const { data: years, isError: yearsError } = useAcademicYears()
+const activeYearId = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.id ?? '')
+const noYear = computed(() => yearsError.value || (years.value !== undefined && years.value.length === 0))
 
 const steps = ['Charger le fichier', 'Vérification', 'Import terminé']
 const currentStep = ref(0)
@@ -124,10 +168,8 @@ const currentStep = ref(0)
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const dragging = ref(false)
-const activeYearId = ref('')
 
 const previewing = ref(false)
-const uploading = ref(false)
 const committing = ref(false)
 const undoing = ref(false)
 
@@ -137,14 +179,6 @@ const undoError = ref('')
 
 const previewData = ref<ImportPreview | null>(null)
 const commitResult = ref<ImportResult | null>(null)
-
-onMounted(async () => {
-  try {
-    const years = await api.academicYears.list()
-    const year = years.find(y => y.status === 'active') ?? years[0]
-    if (year) activeYearId.value = year.id
-  } catch { /* silent */ }
-})
 
 function onFileChange(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -158,7 +192,8 @@ function onDrop(e: DragEvent) {
 }
 
 async function doPreview() {
-  if (!selectedFile.value || !activeYearId.value || previewing.value) return
+  if (!selectedFile.value || previewing.value) return
+  if (!activeYearId.value) { uploadError.value = 'Aucune année scolaire configurée.'; return }
   previewing.value = true
   uploadError.value = ''
   try {
@@ -178,6 +213,7 @@ async function doCommit() {
   try {
     commitResult.value = await api.students.import.commit(activeYearId.value, selectedFile.value)
     currentStep.value = 2
+    await queryClient.invalidateQueries({ queryKey: ['students', activeYearId.value] })
   } catch (e) {
     commitError.value = e instanceof Error ? e.message : 'Erreur lors de l\'import'
   } finally {
@@ -211,8 +247,8 @@ function startOver() {
 }
 
 function downloadTemplate() {
-  const headers = 'Nom,Post-nom,Prénom,Sexe,Date de naissance,Lieu de naissance,Téléphone tuteur,Classe\n'
-  const example = 'KABONGO,Ilunga,José,M,2010-03-15,Kinshasa,+243812345678,4S A\n'
+  const headers = 'Nom,Post-nom,Prénom,Sexe,Date de naissance,Lieu de naissance,Classe,Nom du parent,Téléphone du parent\n'
+  const example = 'KABONGO,Ilunga,José,M,2010-03-15,Kinshasa,4S A,KABONGO Jean,+243812345678\n'
   const blob = new Blob(['﻿' + headers + example], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -287,4 +323,34 @@ function downloadTemplate() {
 .btn--ghost { background: transparent; color: var(--k-text); border: 1px solid #d1d5db; }
 .btn--danger { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 .btn--danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.format-guide {
+  background: #f9fafb; border: 1px solid var(--k-border); border-radius: 10px;
+  padding: 16px 20px; margin-bottom: 20px;
+}
+.format-guide__title { font-size: 13px; font-weight: 600; color: var(--k-navy); margin: 0 0 12px; }
+.format-cols { display: flex; gap: 32px; }
+.format-col ul { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 5px; }
+.format-col li { font-size: 13px; color: #374151; display: flex; align-items: baseline; gap: 6px; }
+.format-col code { background: #e5e7eb; border-radius: 4px; padding: 1px 6px; font-size: 12px; font-family: 'IBM Plex Mono', monospace; color: #1a1a2e; }
+.format-col__badge { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; }
+.format-col--required .format-col__badge { background: #fee2e2; color: #991b1b; }
+.format-col--optional .format-col__badge { background: #f3f4f6; color: #6b7280; }
+.format-hint { font-size: 11px; color: #9ca3af; }
+
+.alert-warn {
+  display: flex; align-items: center; gap: 10px;
+  background: #fef9c3; border: 1px solid #fef08a; border-radius: 8px;
+  padding: 12px 16px; font-size: 13px; color: #854d0e; margin-bottom: 20px;
+}
+.alert-link { color: #854d0e; font-weight: 600; }
+
+.import-options {
+  display: flex; justify-content: flex-end; margin-bottom: 16px;
+}
+.option-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--k-blue); text-decoration: none;
+}
+.option-link:hover { text-decoration: underline; }
 </style>

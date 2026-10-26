@@ -209,7 +209,7 @@ async function createYear() {
     const created = await api.academicYears.create(newYear)
     yearDetail.value = await api.academicYears.get(created.id)
     showCreateForm.value = false
-  } catch (e) {
+  } catch {
     error.value = 'Erreur lors de la création. Réessayez.'
   } finally {
     saving.value = false

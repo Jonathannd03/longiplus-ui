@@ -105,7 +105,7 @@ async function sendInvite() {
     const m = await api.members.invite({ email: invite.email, role: invite.role })
     members.value.push(m)
     invite.email = ''
-  } catch (e) {
+  } catch {
     inviteError.value = 'Erreur lors de l\'envoi. Réessayez.'
   } finally {
     inviting.value = false

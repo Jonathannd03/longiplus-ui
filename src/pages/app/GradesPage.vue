@@ -17,21 +17,45 @@
     <div v-else-if="error" class="state-msg state-msg--error">{{ error }}</div>
 
     <template v-else>
-      <div class="toolbar">
-        <div class="selector-group">
-          <select class="input-select" v-model="selectedPeriodId" @change="loadResults">
-            <option v-for="p in periods" :key="p.id" :value="p.id">{{ p.label }}</option>
-          </select>
-          <select class="input-select" v-model="selectedSectionId" @change="loadResults">
-            <option v-for="s in sections" :key="s.id" :value="s.id">{{ s.name }}</option>
-          </select>
-        </div>
-        <div class="search-wrap">
-          <input class="input-search" placeholder="Rechercher un élève…" v-model="searchQ" />
-        </div>
+      <!-- No periods configured -->
+      <div v-if="!periods.length" class="empty-state">
+        <div class="empty-state__icon">📅</div>
+        <p class="empty-state__title">Aucune période configurée</p>
+        <p class="empty-state__sub">Créez d'abord l'année scolaire avec ses périodes.</p>
+        <RouterLink to="/app/settings/year" class="btn btn-outline">Configurer l'année</RouterLink>
       </div>
 
-      <div v-if="resultsLoading" class="state-msg">Calcul des rangs…</div>
+      <!-- No sections configured -->
+      <div v-else-if="!sections.length" class="empty-state">
+        <div class="empty-state__icon">🏫</div>
+        <p class="empty-state__title">Aucune classe configurée</p>
+        <p class="empty-state__sub">Ajoutez des classes dans la section Classes et cours.</p>
+        <RouterLink to="/app/classes" class="btn btn-outline">Gérer les classes</RouterLink>
+      </div>
+
+      <template v-else>
+        <div class="toolbar">
+          <div class="selector-group">
+            <select class="input-select" v-model="selectedPeriodId" @change="loadResults">
+              <option v-for="p in periods" :key="p.id" :value="p.id">{{ p.label }}</option>
+            </select>
+            <select class="input-select" v-model="selectedSectionId" @change="loadResults">
+              <option v-for="s in sections" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+          </div>
+          <div class="search-wrap">
+            <input class="input-search" placeholder="Rechercher un élève…" v-model="searchQ" />
+          </div>
+        </div>
+
+        <div v-if="resultsLoading" class="state-msg">Calcul des rangs…</div>
+        <div v-else-if="resultsError" class="state-msg state-msg--error">{{ resultsError }}</div>
+
+        <div v-else-if="results && results.rows.length === 0" class="empty-state">
+          <div class="empty-state__icon">📋</div>
+          <p class="empty-state__title">Aucune note enregistrée</p>
+          <p class="empty-state__sub">Les notes pour cette période et cette classe n'ont pas encore été saisies.</p>
+        </div>
 
       <div class="table-scroll" v-else-if="results">
         <table class="grade-table">
@@ -77,6 +101,7 @@
         <span class="info-icon">ℹ</span>
         <span>Les notes en <span class="text-red">rouge</span> sont inférieures à 50 % du maximum.</span>
       </div>
+      </template><!-- end v-else (periods && sections exist) -->
     </template>
   </div>
 </template>
@@ -91,6 +116,7 @@ const api = useSetupApi()
 const loading = ref(true)
 const resultsLoading = ref(false)
 const error = ref('')
+const resultsError = ref('')
 const searchQ = ref('')
 
 const activeYear = ref<AcademicYear | null>(null)
@@ -133,10 +159,12 @@ onMounted(async () => {
 async function loadResults() {
   if (!selectedPeriodId.value || !selectedSectionId.value) return
   resultsLoading.value = true
+  resultsError.value = ''
   try {
     results.value = await api.marks.results(selectedSectionId.value, selectedPeriodId.value)
-  } catch {
+  } catch (e) {
     results.value = null
+    resultsError.value = e instanceof Error ? e.message : 'Impossible de charger les notes.'
   } finally {
     resultsLoading.value = false
   }
@@ -215,6 +243,11 @@ h2 { font-family: 'Poppins', sans-serif; font-size: 28px; font-weight: 700; colo
 .pct-fail { color: #dc2626; }
 .pct-ok { color: #d97706; }
 .pct-good { color: #16a34a; }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 24px; gap: 10px; }
+.empty-state__icon { font-size: 36px; line-height: 1; }
+.empty-state__title { font-family: 'Poppins', sans-serif; font-size: 16px; font-weight: 600; color: var(--k-navy); margin: 0; }
+.empty-state__sub { font-size: 13px; color: #6b7280; margin: 0; text-align: center; max-width: 320px; }
 
 .info-box { display: flex; gap: 12px; border-radius: 8px; padding: 14px 16px; margin-top: 16px; font-size: 13px; background: var(--k-sky); color: var(--k-navy); }
 .info-icon { font-size: 16px; flex-shrink: 0; }

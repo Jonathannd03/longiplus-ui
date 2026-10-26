@@ -50,7 +50,24 @@
     <div v-if="loading" class="state-msg">Chargement…</div>
     <div v-else-if="error" class="state-msg state-msg--error">{{ error }}</div>
     <template v-else>
-      <div class="table-wrap">
+      <div v-if="students.length === 0" class="empty-wrap">
+        <EmptyState
+          :icon="iconStudents"
+          title="Aucun élève inscrit"
+          description="Importez la liste depuis Excel ou inscrivez les élèves un par un."
+        />
+        <div class="empty-actions">
+          <RouterLink to="/app/students/import" class="btn-outline">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importer depuis Excel
+          </RouterLink>
+          <RouterLink to="/app/students/new" class="btn-navy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Inscrire un élève
+          </RouterLink>
+        </div>
+      </div>
+      <div v-if="students.length > 0" class="table-wrap">
         <table class="data-table">
           <thead>
             <tr>
@@ -65,8 +82,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-if="visible.length === 0">
-              <td colspan="7" class="td-empty">Aucun élève trouvé.</td>
+            <tr v-if="visible.length === 0 && students.length > 0">
+              <td colspan="7" class="td-empty">Aucun résultat pour cette recherche.</td>
             </tr>
             <tr v-for="s in visible" :key="s.id" :class="{ 'tr-checked': checkedIds.includes(s.id) }">
               <td class="td-check"><input type="checkbox" :checked="checkedIds.includes(s.id)" @change="toggleStudent(s.id)" /></td>
@@ -84,7 +101,7 @@
           </tbody>
         </table>
       </div>
-      <div class="pagination">
+      <div v-if="students.length > 0" class="pagination">
         <span class="pagination__info">{{ visible.length }} sur {{ filtered.length }}</span>
       </div>
     </template>
@@ -92,42 +109,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useSetupApi } from '@/api/setup'
-import type { StudentListItem, ClassSection } from '@/api/setup'
+import { ref, computed } from 'vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { useAcademicYears, useStudents, useClassSections } from '@/composables/queries'
+import type { StudentListItem } from '@/api/setup'
 
-const api = useSetupApi()
+const iconStudents = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
 
-const loading = ref(true)
-const error = ref('')
-const students = ref<StudentListItem[]>([])
-const sections = ref<ClassSection[]>([])
-const activeYearId = ref('')
+const { data: years, isLoading: loadingYears } = useAcademicYears()
+const activeYearId = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.id ?? '')
+
+const { data: studentsData, isLoading: loadingStudents, isError, error: queryError } = useStudents(activeYearId)
+const { data: sectionsData, isLoading: loadingSections } = useClassSections(activeYearId)
+
+const loading = computed(() => loadingYears.value || loadingStudents.value || loadingSections.value)
+const error = computed(() => isError.value ? (queryError.value instanceof Error ? queryError.value.message : 'Erreur de chargement') : '')
+
+const students = computed(() => studentsData.value ?? [])
+const sections = computed(() => sectionsData.value ?? [])
 
 const search = ref('')
 const selectedSectionId = ref('')
 const activeTab = ref('all')
 const checkedIds = ref<string[]>([])
-
-onMounted(async () => {
-  try {
-    const years = await api.academicYears.list()
-    const year = years.find(y => y.status === 'active') ?? years[0]
-    if (year) {
-      activeYearId.value = year.id
-      const [studs, sects] = await Promise.all([
-        api.students.list({ yearId: year.id }),
-        api.classSections.list(year.id),
-      ])
-      students.value = studs
-      sections.value = sects
-    }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Erreur de chargement'
-  } finally {
-    loading.value = false
-  }
-})
 
 const newStudents = computed(() => {
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
@@ -164,11 +168,6 @@ function initials(s: StudentListItem): string {
   return `${s.lastName[0] ?? ''}${s.firstName[0] ?? ''}`.toUpperCase()
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('fr-CD', { day: '2-digit', month: 'short', year: 'numeric' })
-}
 
 function toggleStudent(id: string) {
   const i = checkedIds.value.indexOf(id)
@@ -244,4 +243,7 @@ function toggleAll() {
 
 .pagination { display: flex; align-items: center; justify-content: flex-end; padding: 4px 0; }
 .pagination__info { font-size: 13px; color: #6b7280; }
+
+.empty-wrap { display: flex; flex-direction: column; align-items: center; }
+.empty-actions { display: flex; gap: 12px; margin-top: 4px; }
 </style>

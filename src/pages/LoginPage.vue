@@ -2,16 +2,14 @@
   <div class="login-layout">
     <div class="login-left">
       <div class="login-left__logo">
-        <img src="/longiplus-logo.svg" alt="LongiPlus" height="48" style="filter: brightness(0) invert(1)" />
+        <img src="/longiplus-logo-white.svg" alt="LongiPlus" height="40" style="filter: brightness(0) invert(1);" />
+        <p class="login-left__subtitle">Tout pour mieux gérer votre école.</p>
       </div>
       <div class="login-left__circle"></div>
+      <img src="/longiplus-icon.svg" class="login-left__deco" aria-hidden="true" />
       <div class="login-left__bottom">
-        <div class="login-left__arcs" aria-hidden="true">
-          <span class="arc arc--1"></span>
-          <span class="arc arc--2"></span>
-        </div>
         <h2 class="login-left__tagline">Toute votre école, sur un seul écran.</h2>
-        <p class="login-left__sub">Paiements, élèves, notes et bulletins de votre école, au même endroit.</p>
+        <p class="login-left__sub">Élèves, appel, notes et bulletins de votre école, au même endroit.</p>
       </div>
     </div>
 
@@ -21,7 +19,44 @@
         <h1 class="login-title">Connexion</h1>
         <p class="login-sub">Pour le promoteur, le préfet, l'économe, le secrétariat et les enseignants.</p>
 
-        <button class="btn-primary" @click="authStore.login()">Se connecter</button>
+        <form @submit.prevent="submit">
+          <div class="field">
+            <label class="field__label" for="identifier">Téléphone ou e-mail</label>
+            <input
+              id="identifier"
+              v-model="identifier"
+              class="field__input"
+              type="text"
+              placeholder="+243 81 234 5678"
+              autocomplete="username"
+              :disabled="loading"
+              required
+            />
+          </div>
+
+          <div class="field">
+            <div class="field__header">
+              <label class="field__label" for="password">Mot de passe</label>
+              <RouterLink to="/forgot-password" class="link field__forgot">Mot de passe oublié</RouterLink>
+            </div>
+            <input
+              id="password"
+              v-model="password"
+              class="field__input"
+              type="password"
+              autocomplete="current-password"
+              :disabled="loading"
+              required
+            />
+          </div>
+
+          <p v-if="error" class="error-msg">{{ error }}</p>
+
+          <button type="submit" class="btn-primary" :disabled="loading">
+            <span v-if="loading" class="btn-primary__spinner" aria-hidden="true"></span>
+            {{ loading ? 'Connexion en cours…' : 'Se connecter' }}
+          </button>
+        </form>
 
         <div class="verification-box">
           <span class="verification-box__icon">
@@ -51,9 +86,32 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
+const router = useRouter()
+
+const identifier = ref('')
+const password = ref('')
+const loading = ref(false)
+const error = ref<string | null>(null)
+
+async function submit() {
+  error.value = null
+  loading.value = true
+  try {
+    const err = await authStore.loginWithCredentials(identifier.value, password.value)
+    if (err) {
+      error.value = err
+    } else {
+      await router.push('/app/dashboard')
+    }
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -77,15 +135,32 @@ const authStore = useAuthStore()
   position: relative;
 }
 
+.login-left__subtitle {
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
 .login-left__circle {
   position: absolute;
-  right: -60px;
+  right: 60px;
   top: 50%;
   transform: translateY(-60%);
-  width: 280px;
-  height: 280px;
+  width: 200px;
+  height: 200px;
   background: #FDC409;
   border-radius: 50%;
+  z-index: 1;
+}
+
+.login-left__deco {
+  position: absolute;
+  bottom: -60px;
+  left: -60px;
+  width: 280px;
+  filter: brightness(0) invert(1);
+  opacity: 0.1;
+  pointer-events: none;
   z-index: 1;
 }
 
@@ -93,35 +168,6 @@ const authStore = useAuthStore()
   margin-top: auto;
   z-index: 2;
   position: relative;
-}
-
-.login-left__arcs {
-  position: absolute;
-  bottom: -120px;
-  left: -20px;
-  width: 300px;
-  height: 200px;
-}
-
-.arc {
-  position: absolute;
-  border-radius: 50%;
-  border: 3px solid rgba(1, 96, 211, 0.6);
-  display: block;
-}
-
-.arc--1 {
-  width: 180px;
-  height: 180px;
-  left: 30px;
-  bottom: 40px;
-}
-
-.arc--2 {
-  width: 240px;
-  height: 240px;
-  left: -10px;
-  bottom: 10px;
 }
 
 .login-left__tagline {
@@ -175,49 +221,70 @@ const authStore = useAuthStore()
   margin: 0 0 28px;
 }
 
-.form-group {
-  margin-bottom: 18px;
+/* ── Form fields ── */
+
+.field {
+  margin-bottom: 16px;
 }
 
-.form-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
+.field__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
   margin-bottom: 6px;
 }
 
-.form-input {
+.field__label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 6px;
+}
+
+.field__header .field__label {
+  margin-bottom: 0;
+}
+
+.field__forgot {
+  font-size: 13px;
+}
+
+.field__input {
   width: 100%;
-  padding: 12px 14px;
-  border: 1.5px solid #d1d5db;
+  padding: 11px 14px;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
   font-size: 15px;
   color: #1a1a2e;
   background: #fff;
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
-  transition: border-color 0.15s;
 }
 
-.form-input:focus {
+.field__input:focus {
   border-color: #0160D3;
+  box-shadow: 0 0 0 3px rgba(1, 96, 211, 0.12);
 }
 
-.form-hint-right {
-  text-align: right;
-  margin-top: 6px;
+.field__input:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
 }
 
-.link {
-  color: #0160D3;
+.error-msg {
   font-size: 13px;
-  text-decoration: none;
+  color: #dc2626;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
 }
 
-.link:hover {
-  text-decoration: underline;
-}
+/* ── Button ── */
 
 .btn-primary {
   width: 100%;
@@ -229,12 +296,48 @@ const authStore = useAuthStore()
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  margin-top: 4px;
   margin-bottom: 20px;
   transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: #052a6a;
+}
+
+.btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-primary__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Info boxes ── */
+
+.link {
+  color: #0160D3;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
 }
 
 .verification-box {

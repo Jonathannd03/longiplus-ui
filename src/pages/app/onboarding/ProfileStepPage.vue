@@ -179,7 +179,7 @@ async function save() {
     if (step) step.done = true
     schoolStore.onboardingStep = 2
     router.push('/app/onboarding')
-  } catch (e) {
+  } catch {
     error.value = 'Erreur lors de la sauvegarde. Réessayez.'
   } finally {
     saving.value = false

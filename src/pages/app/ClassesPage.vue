@@ -165,6 +165,33 @@
           <h2>Enseignants et affectations</h2>
         </div>
       </div>
+
+      <!-- Invite form -->
+      <div class="invite-card">
+        <h3 class="invite-title">Inviter un membre</h3>
+        <div class="invite-form">
+          <div class="field">
+            <label>E-mail</label>
+            <input v-model="invite.email" type="email" class="input" placeholder="prenom.nom@ecole.cd" @keydown.enter="sendInvite" />
+          </div>
+          <div class="field">
+            <label>Rôle</label>
+            <select v-model="invite.role" class="input">
+              <option value="director">Préfet</option>
+              <option value="bursar">Économe</option>
+              <option value="secretary">Secrétaire</option>
+              <option value="teacher">Professeur</option>
+              <option value="class_teacher">Titulaire</option>
+            </select>
+          </div>
+          <button class="btn btn-navy invite-btn" :disabled="inviting || !invite.email.trim()" @click="sendInvite">
+            {{ inviting ? 'Envoi…' : 'Envoyer l\'invitation' }}
+          </button>
+        </div>
+        <p v-if="inviteError" class="form-error">{{ inviteError }}</p>
+        <p v-if="inviteSuccess" class="form-success">Invitation envoyée à {{ inviteSuccess }}.</p>
+      </div>
+
       <div class="card">
         <table class="data-table">
           <thead>
@@ -185,7 +212,7 @@
               </td>
             </tr>
             <tr v-if="members.length === 0">
-              <td colspan="3" class="empty-cell">Aucun membre. Invitez l'équipe depuis la page Démarrage.</td>
+              <td colspan="3" class="empty-cell">Aucun membre invité pour l'instant.</td>
             </tr>
           </tbody>
         </table>
@@ -195,19 +222,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, reactive } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useSetupApi } from '@/api/setup'
-import type { ClassSection, Member } from '@/api/setup'
+import { useAcademicYears, useClassSections, useMembers } from '@/composables/queries'
 
 const api = useSetupApi()
+const queryClient = useQueryClient()
 const tab = ref<'classes' | 'teachers'>('classes')
 
 // --- Academic year + sections ---
-const yearId = ref('')
-const yearLabel = ref('')
-const sections = ref<ClassSection[]>([])
-const loadingSections = ref(false)
+const { data: years, isLoading: loadingYears } = useAcademicYears()
+const activeYearId = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.id ?? '')
+const yearLabel = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.label ?? '')
+
+const { data: sectionsData, isLoading: loadingSectionsQuery } = useClassSections(activeYearId)
+const loadingSections = computed(() => loadingYears.value || loadingSectionsQuery.value)
+const sections = computed(() => sectionsData.value ?? [])
+
 const selectedId = ref('')
+watch(sections, (sects) => {
+  if (sects.length > 0 && !selectedId.value) selectedId.value = sects[0]!.id
+}, { immediate: true })
 
 const selectedSection = computed(() => sections.value.find(s => s.id === selectedId.value) ?? null)
 
@@ -226,23 +262,8 @@ const totalMaxExam = computed(() =>
 )
 
 // --- Members (teachers tab) ---
-const members = ref<Member[]>([])
-
-onMounted(async () => {
-  loadingSections.value = true
-  const [years, mems] = await Promise.all([
-    api.academicYears.list().catch(() => []),
-    api.members.list().catch(() => []),
-  ])
-  members.value = mems
-  if (years.length > 0) {
-    yearId.value = years[0]!.id
-    yearLabel.value = years[0]!.label
-    sections.value = await api.classSections.list(yearId.value).catch(() => [])
-    if (sections.value.length > 0) selectedId.value = sections.value[0]!.id
-  }
-  loadingSections.value = false
-})
+const { data: membersData } = useMembers()
+const members = computed(() => membersData.value ?? [])
 
 // --- Create section ---
 const showCreateSection = ref(false)
@@ -251,7 +272,7 @@ const createSectionError = ref('')
 const newSection = ref({ level: '', option: '', name: '' })
 
 async function createSection() {
-  if (!yearId.value || !newSection.value.name || !newSection.value.level) return
+  if (!activeYearId.value || !newSection.value.name || !newSection.value.level) return
   creatingSec.value = true
   createSectionError.value = ''
   try {
@@ -260,9 +281,9 @@ async function createSection() {
       name: newSection.value.name,
     }
     if (newSection.value.option) sectionDto.option = newSection.value.option
-    const created = await api.classSections.create(yearId.value, sectionDto)
-    sections.value.push({ ...created, subjects: [] })
+    const created = await api.classSections.create(activeYearId.value, sectionDto)
     selectedId.value = created.id
+    await queryClient.invalidateQueries({ queryKey: ['class-sections', activeYearId.value] })
     showCreateSection.value = false
     newSection.value = { level: '', option: '', name: '' }
   } catch {
@@ -288,15 +309,37 @@ async function addSubject() {
       maxPeriod: newSubject.value.maxPeriod,
     }
     if (newSubject.value.maxExam !== undefined) subjectDto.maxExam = newSubject.value.maxExam
-    const created = await api.subjects.create(selectedId.value, subjectDto)
-    const sec = sections.value.find(s => s.id === selectedId.value)
-    if (sec) sec.subjects.push(created)
+    await api.subjects.create(selectedId.value, subjectDto)
+    await queryClient.invalidateQueries({ queryKey: ['class-sections', activeYearId.value] })
     showAddSubject.value = false
     newSubject.value = { name: '', maxPeriod: 10, maxExam: undefined }
   } catch {
     addSubjectError.value = 'Erreur. Réessayez.'
   } finally {
     addingSubject.value = false
+  }
+}
+
+// --- Invite member ---
+const invite = reactive({ email: '', role: 'teacher' })
+const inviting = ref(false)
+const inviteError = ref('')
+const inviteSuccess = ref('')
+
+async function sendInvite() {
+  if (!invite.email.trim()) return
+  inviting.value = true
+  inviteError.value = ''
+  inviteSuccess.value = ''
+  try {
+    await api.members.invite({ email: invite.email.trim(), role: invite.role })
+    inviteSuccess.value = invite.email.trim()
+    invite.email = ''
+    await queryClient.invalidateQueries({ queryKey: ['members'] })
+  } catch {
+    inviteError.value = 'Erreur lors de l\'envoi. Vérifiez l\'adresse et réessayez.'
+  } finally {
+    inviting.value = false
   }
 }
 
@@ -362,6 +405,13 @@ label { font-size: 12px; font-weight: 600; color: #374151; }
 .info-icon { font-size: 16px; flex-shrink: 0; }
 
 .card { background: #fff; border: 1px solid var(--k-border); border-radius: var(--k-radius); padding: 0; overflow: hidden; }
+
+.invite-card { background: #fff; border: 1px solid var(--k-border); border-radius: var(--k-radius); padding: 20px; margin-bottom: 16px; }
+.invite-title { font-size: 14px; font-weight: 600; color: var(--k-navy); margin: 0 0 14px; }
+.invite-form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.invite-form .field { flex: 1; min-width: 160px; }
+.invite-btn { white-space: nowrap; padding: 9px 18px; font-size: 13.5px; }
+.form-success { font-size: 13px; color: #16a34a; margin: 8px 0 0; }
 
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
 .badge-success { background: #dcfce7; color: #166534; }

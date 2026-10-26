@@ -53,9 +53,23 @@
                 <div class="fields-row fields-row--3">
                   <div class="field">
                     <label>Sexe</label>
-                    <div class="toggle-group">
-                      <button type="button" :class="['toggle-btn', form.sex === 'M' ? 'toggle-btn--active' : '']" @click="form.sex = 'M'">Garçon</button>
-                      <button type="button" :class="['toggle-btn', form.sex === 'F' ? 'toggle-btn--active' : '']" @click="form.sex = 'F'">Fille</button>
+                    <div class="sex-select">
+                      <button
+                        type="button"
+                        :class="['sex-btn', form.sex === 'M' ? 'sex-btn--active' : '']"
+                        @click="form.sex = 'M'"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                        Garçon
+                      </button>
+                      <button
+                        type="button"
+                        :class="['sex-btn', form.sex === 'F' ? 'sex-btn--active' : '']"
+                        @click="form.sex = 'F'"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><line x1="12" y1="12" x2="12" y2="21"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+                        Fille
+                      </button>
                     </div>
                   </div>
                   <div class="field">
@@ -127,16 +141,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useSetupApi } from '@/api/setup'
-import type { ClassSection, EnrollResult } from '@/api/setup'
+import { useAcademicYears, useClassSections } from '@/composables/queries'
+import type { EnrollResult } from '@/api/setup'
 
 const api = useSetupApi()
 
-const loadingSections = ref(true)
-const sections = ref<ClassSection[]>([])
-const activeYearId = ref('')
-const yearLabel = ref('')
+const { data: years, isLoading: loadingYears } = useAcademicYears()
+const activeYearId = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.id ?? '')
+const yearLabel = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.label ?? '')
+
+const { data: sectionsData, isLoading: sectionsQueryLoading } = useClassSections(activeYearId)
+const loadingSections = computed(() => loadingYears.value || sectionsQueryLoading.value)
+const sections = computed(() => sectionsData.value ?? [])
 
 const submitting = ref(false)
 const formError = ref('')
@@ -152,20 +170,6 @@ const form = ref({
   classSectionId: '',
   guardianPhone: '',
   guardianName: '',
-})
-
-onMounted(async () => {
-  try {
-    const years = await api.academicYears.list()
-    const year = years.find(y => y.status === 'active') ?? years[0]
-    if (year) {
-      activeYearId.value = year.id
-      yearLabel.value = year.label
-      sections.value = await api.classSections.list(year.id)
-    }
-  } finally {
-    loadingSections.value = false
-  }
 })
 
 const canSubmit = computed(() =>
@@ -241,9 +245,15 @@ function resetForm() {
 .input { border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; outline: none; }
 .input:focus { border-color: var(--k-blue); box-shadow: 0 0 0 3px rgba(1,96,211,0.1); }
 .field-helper { font-size: 12px; color: var(--k-text-muted); margin: 4px 0 0; }
-.toggle-group { display: flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
-.toggle-btn { flex: 1; padding: 8px; font-size: 14px; border: none; background: #fff; cursor: pointer; }
-.toggle-btn--active { background: var(--k-sky); color: var(--k-navy); font-weight: 600; }
+.sex-select { display: flex; gap: 8px; }
+.sex-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 12px; border: 1.5px solid #d1d5db; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fff; color: #6b7280;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.sex-btn:hover { border-color: var(--k-navy); color: var(--k-navy); }
+.sex-btn--active { background: var(--k-navy); border-color: var(--k-navy); color: #fff; font-weight: 600; }
 .info-box { display: flex; gap: 12px; padding: 14px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
 .info-box--warn { background: #fef9c3; border: 1px solid #fef08a; color: #854d0e; }
 .form-error { color: #ef4444; font-size: 13px; margin: 0 0 12px; }

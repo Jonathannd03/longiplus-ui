@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useSetupApi } from '@/api/setup'
 
 export interface Period {
   id: string
@@ -23,16 +24,19 @@ export const useSchoolStore = defineStore('school', () => {
     agentPhone: '+243 81 ••• 00 12',
   })
 
+  // onboardingChecked: false until syncOnboardingState() has run at least once.
+  // AppLayout waits for this before deciding to redirect to /onboarding.
+  const onboardingChecked = ref(false)
   const isOnboardingComplete = ref(false)
-  const onboardingStep = ref(4)
+  const onboardingStep = ref(1)
 
   const onboardingSteps = ref([
-    { id: 1, label: 'Profil de l\'école', desc: 'Nom, logo, adresse, niveaux : maternelle, primaire, secondaire', done: true },
-    { id: 2, label: 'Année, périodes et barème', desc: '2026-2027 · 2 semestres · 4 périodes et 2 examens · barème RDC', done: true },
-    { id: 3, label: 'Classes et cours', desc: '12 classes · maxima par cours · titulaires désignés', done: true },
-    { id: 4, label: 'Importer les élèves', desc: 'Depuis votre fichier Excel. Les codes élèves sont créés automatiquement.', done: false },
-    { id: 5, label: 'Inviter les enseignants', desc: 'Par numéro de téléphone, avec leurs cours et leurs classes', done: false },
-    { id: 6, label: 'Prévenir les parents', desc: 'Un SMS avec le code élève et le nom de la classe, après votre accord', done: false },
+    { id: 1, label: 'Profil de l\'école',          desc: 'Nom, logo, adresse, niveaux enseignés',                                           done: false },
+    { id: 2, label: 'Année, périodes et barème',   desc: 'Dates, nombre de semestres, barème RDC',                                          done: false },
+    { id: 3, label: 'Classes et cours',            desc: 'Classes créées · matières et maxima configurés · titulaires désignés',            done: false },
+    { id: 4, label: 'Importer les élèves',         desc: 'Depuis votre fichier Excel. Les codes élèves sont créés automatiquement.',        done: false },
+    { id: 5, label: 'Inviter les enseignants',     desc: 'Par e-mail, avec leurs cours et leurs classes',                                   done: false },
+    { id: 6, label: 'Prévenir les parents',        desc: 'Un SMS avec le code élève et le nom de la classe, après votre accord',           done: false },
   ])
 
   const periods = ref<Period[]>([
@@ -61,5 +65,76 @@ export const useSchoolStore = defineStore('school', () => {
     { name: 'Jours fériés', dates: 'Selon le calendrier national' },
   ])
 
-  return { school, isOnboardingComplete, onboardingStep, onboardingSteps, periods, currentPeriod, gradeScale, conductLabels, holidays }
+  async function syncOnboardingState() {
+    const api = useSetupApi()
+
+    try {
+      // Step 1: school profile — always done once authenticated
+      onboardingSteps.value[0]!.done = true
+
+      // Step 2: academic year exists with periods
+      let activeYearId = ''
+      try {
+        const years = await api.academicYears.list()
+        const year = years.find(y => y.status === 'active') ?? years[0]
+        if (year) {
+          const detail = await api.academicYears.get(year.id)
+          onboardingSteps.value[1]!.done = detail.periods.length > 0
+          activeYearId = year.id
+          // Also update the display label
+          school.value.year = year.label
+        }
+      } catch { /* ignore */ }
+
+      // Step 3: classes with subjects exist
+      if (activeYearId) {
+        try {
+          const sections = await api.classSections.list(activeYearId)
+          const hasSubjects = sections.some(s => s.subjects.length > 0)
+          onboardingSteps.value[2]!.done = sections.length > 0 && hasSubjects
+        } catch { /* ignore */ }
+      }
+
+      // Step 4: students imported
+      if (activeYearId) {
+        try {
+          const students = await api.students.list({ yearId: activeYearId })
+          onboardingSteps.value[3]!.done = students.length > 0
+        } catch { /* ignore */ }
+      }
+
+      // Step 5: teachers/staff invited (members beyond the director)
+      try {
+        const members = await api.members.list()
+        const nonDirectorRoles = ['teacher', 'class_teacher', 'bursar', 'secretary', 'owner']
+        onboardingSteps.value[4]!.done = members.some(m => nonDirectorRoles.includes(m.role))
+      } catch { /* ignore */ }
+
+      // Step 6: parents can be reached — done if students exist with phone numbers
+      // Proxy: if step 4 (students) is done, parents have codes and can receive SMS
+      onboardingSteps.value[5]!.done = onboardingSteps.value[3]!.done
+
+      // Determine the first incomplete step
+      const firstPending = onboardingSteps.value.findIndex(s => !s.done)
+      onboardingStep.value = firstPending >= 0 ? firstPending + 1 : 6
+
+      isOnboardingComplete.value = onboardingSteps.value.every(s => s.done)
+    } catch { /* ignore — keep defaults */ } finally {
+      onboardingChecked.value = true
+    }
+  }
+
+  return {
+    school,
+    isOnboardingComplete,
+    onboardingChecked,
+    onboardingStep,
+    onboardingSteps,
+    periods,
+    currentPeriod,
+    gradeScale,
+    conductLabels,
+    holidays,
+    syncOnboardingState,
+  }
 })

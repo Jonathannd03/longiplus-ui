@@ -140,9 +140,6 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
 
 const currentClass = 'Terminale Scientifique A'
 const currentPeriod = 'Période 2'

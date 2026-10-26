@@ -1,7 +1,12 @@
 <template>
   <template v-if="!authStore.authReady">
     <div class="app-init-loader">
-      <div class="app-init-spinner"></div>
+      <div class="app-init-card">
+        <img src="/longiplus-logo.svg" alt="LongiPlus" class="app-init-logo" />
+        <div class="app-init-track">
+          <div class="app-init-bar"></div>
+        </div>
+      </div>
     </div>
   </template>
   <RouterView v-else />
@@ -17,19 +22,39 @@ const authStore = useAuthStore();
 .app-init-loader {
   position: fixed;
   inset: 0;
-  background: #f5f7fa;
+  background: #083A8C;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
 }
-.app-init-spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid #e5e7eb;
-  border-top-color: #083A8C;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+.app-init-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+.app-init-logo {
+  height: 44px;
+  filter: brightness(0) invert(1);
+}
+.app-init-track {
+  width: 160px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.app-init-bar {
+  height: 100%;
+  width: 40%;
+  background: #FDC409;
+  border-radius: 99px;
+  animation: sweep 1.2s ease-in-out infinite;
+}
+@keyframes sweep {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(150%); }
+  100% { transform: translateX(300%); }
+}
 </style>

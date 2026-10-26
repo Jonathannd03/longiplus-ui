@@ -36,13 +36,18 @@
         <RouterLink to="/app/onboarding" class="setup-banner__btn">Reprendre la configuration →</RouterLink>
       </div>
 
-      <div v-if="loading" class="loading-hint">Chargement du tableau de bord…</div>
+      <div v-if="loading" class="skeleton-row">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
 
       <div v-else class="stats-row">
         <StatCard
           label="ÉLÈVES INSCRITS"
           :value="dashData ? String(dashData.studentCount) : '—'"
-          :sub="dashData ? `${dashData.missingRollCount} classe(s) sans appel aujourd'hui` : ''"
+          :sub="dashData && dashData.studentCount > 0 ? `${dashData.missingRollCount} classe(s) sans appel aujourd'hui` : dashData && dashData.studentCount === 0 ? 'Aucun élève importé · Étape 4 du démarrage' : ''"
         />
         <StatCard
           label="PRÉSENCE AUJOURD'HUI"
@@ -169,26 +174,32 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import StatCard from '@/components/StatCard.vue'
 import { useSchoolStore } from '@/stores/school'
 import { useAttendanceStore } from '@/stores/attendance'
 import { useAuthStore } from '@/stores/auth'
-import { useSetupApi } from '@/api/setup'
-import type { DashboardData, BulletinSectionStatus, AcademicYear, Period } from '@/api/setup'
+import { useAcademicYears, useAcademicYear, useDashboard, useBulletinStatus } from '@/composables/queries'
 
 const schoolStore = useSchoolStore()
 const attendanceStore = useAttendanceStore()
 const authStore = useAuthStore()
-const api = useSetupApi()
 
 const incompleteSteps = computed(() => schoolStore.onboardingSteps.filter(s => !s.done))
 
-const loading = ref(true)
-const activeYear = ref<AcademicYear | null>(null)
-const activePeriod = ref<Period | null>(null)
-const dashData = ref<DashboardData | null>(null)
-const bulletinSections = ref<BulletinSectionStatus[]>([])
+const { data: years, isLoading: loadingYears } = useAcademicYears()
+const activeYearId = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.id ?? '')
+
+const { data: yearDetail } = useAcademicYear(activeYearId)
+const activePeriod = computed(() =>
+  yearDetail.value?.periods.find(p => p.status === 'open') ?? yearDetail.value?.periods.at(-1) ?? null
+)
+
+const { data: dashData, isLoading: loadingDash } = useDashboard(activeYearId)
+const { data: bulletinsData, isLoading: loadingBulletins } = useBulletinStatus(activeYearId)
+const bulletinSections = computed(() => bulletinsData.value ?? [])
+
+const loading = computed(() => loadingYears.value || loadingDash.value || loadingBulletins.value)
 
 const roleMap: Record<string, string> = {
   director: 'Préfet', owner: 'Promoteur', bursar: 'Économe',
@@ -225,29 +236,6 @@ const dashClasses = computed(() =>
     bulletinCount: s.bulletinCount,
   }))
 )
-
-onMounted(async () => {
-  try {
-    const years = await api.academicYears.list()
-    const active = years.find(y => y.status === 'active') ?? years[0] ?? null
-    activeYear.value = active
-    if (!active) return
-
-    const detail = await api.academicYears.get(active.id)
-    activePeriod.value = detail.periods.find(p => p.status === 'open') ?? detail.periods[detail.periods.length - 1] ?? null
-
-    const [dash, sections] = await Promise.all([
-      api.dashboard.get(active.id),
-      api.bulletins.status(active.id),
-    ])
-    dashData.value = dash
-    bulletinSections.value = sections
-  } catch (err) {
-    console.error('Dashboard load error', err)
-  } finally {
-    loading.value = false
-  }
-})
 </script>
 
 <style scoped>
@@ -333,7 +321,6 @@ onMounted(async () => {
   margin: 0 0 4px;
 }
 
-.loading-hint { color: #6b7280; font-size: 14px; padding: 8px 0; }
 
 .stats-row {
   display: flex;
@@ -504,6 +491,25 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 .setup-banner__btn:hover { opacity: 0.88; text-decoration: none; }
+
+.skeleton-row {
+  display: flex;
+  gap: 16px;
+}
+
+.skeleton-card {
+  flex: 1;
+  height: 110px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  border-radius: var(--k-radius);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 .btn-navy {
   padding: 10px 18px;

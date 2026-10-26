@@ -83,31 +83,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useSetupApi } from '@/api/setup'
-import type { DailyStatusRow } from '@/api/setup'
+import { ref, computed } from 'vue'
+import { useAcademicYears, useAttendanceDailyStatus } from '@/composables/queries'
 
-const api = useSetupApi()
+const { data: years, isLoading: loadingYears } = useAcademicYears()
+const activeYearId = computed(() => (years.value?.find(y => y.status === 'active') ?? years.value?.[0])?.id ?? '')
 
-const loading = ref(true)
-const error = ref('')
+const { data: rowsData, isLoading: loadingRows, isError, error: queryError } = useAttendanceDailyStatus(activeYearId)
+const rows = computed(() => rowsData.value ?? [])
+
+const loading = computed(() => loadingYears.value || loadingRows.value)
+const error = computed(() => isError.value ? (queryError.value instanceof Error ? queryError.value.message : 'Erreur de chargement') : '')
+
 const searchQ = ref('')
-const rows = ref<DailyStatusRow[]>([])
-
 const todayLabel = new Date().toLocaleDateString('fr-CD', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()
-
-onMounted(async () => {
-  try {
-    const years = await api.academicYears.list()
-    const year = years.find(y => y.status === 'active') ?? years[0]
-    if (!year) { loading.value = false; return }
-    rows.value = await api.attendance.dailyStatus(year.id)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Erreur de chargement'
-  } finally {
-    loading.value = false
-  }
-})
 
 const doneRows = computed(() => rows.value.filter(r => r.rollDone))
 
