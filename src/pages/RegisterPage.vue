@@ -224,9 +224,12 @@
             </div>
           </div>
 
+          <p v-if="submitError" class="form-error">{{ submitError }}</p>
           <div class="form-actions form-actions--between">
             <button class="btn btn--ghost" @click="go(2)">Retour</button>
-            <button class="btn btn--navy" @click="go(4)">Envoyer la demande</button>
+            <button class="btn btn--navy" :disabled="submitting" @click="submitRegistration">
+              {{ submitting ? 'Envoi en cours…' : 'Envoyer la demande' }}
+            </button>
           </div>
         </template>
 
@@ -304,6 +307,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
+import { publicApi, type RegisterApplyDto } from '@/api/setup'
 
 const currentStep = ref(1)
 
@@ -382,11 +386,54 @@ const docs = reactive([
 ])
 
 const demId = ref('2026-0148')
+const submitting = ref(false)
+const submitError = ref('')
 const sentAt = computed(() => {
   const now = new Date()
   return now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ', ' +
     now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 })
+
+const cityToProvince: Record<string, string> = {
+  'Kinshasa': 'Kinshasa',
+  'Lubumbashi': 'Haut-Katanga',
+  'Goma': 'Nord-Kivu',
+  'Mbuji-Mayi': 'Kasaï-Oriental',
+  'Kananga': 'Kasaï-Central',
+  'Bukavu': 'Sud-Kivu',
+}
+
+const studentCountMap: Record<string, number> = {
+  'Moins de 150': 100,
+  '150 à 300': 225,
+  '300 à 500': 400,
+  '500 à 1 000': 750,
+  'Plus de 1 000': 1000,
+}
+
+async function submitRegistration() {
+  submitting.value = true
+  submitError.value = ''
+  try {
+    const dto: RegisterApplyDto = {
+      schoolName: form.schoolName,
+      province: cityToProvince[form.city] ?? form.city,
+      city: form.city,
+      ...(form.commune || form.address ? { address: [form.address, form.commune].filter(Boolean).join(', ') } : {}),
+      directorName: form.fullName,
+      directorPhone: form.phone,
+      ...(form.email ? { email: form.email } : {}),
+      estimatedStudents: studentCountMap[form.studentCount] ?? 100,
+    }
+    const result = await publicApi.register.apply(dto)
+    demId.value = result.id.replace(/-/g, '').slice(-8).toUpperCase()
+    go(4)
+  } catch (e) {
+    submitError.value = e instanceof Error ? e.message : 'Erreur lors de l\'envoi. Veuillez réessayer.'
+  } finally {
+    submitting.value = false
+  }
+}
 
 function go(n: number) {
   currentStep.value = n
@@ -676,6 +723,8 @@ function go(n: number) {
 .form-actions { margin-top: 4px; }
 .form-actions--between { display: flex; justify-content: space-between; align-items: center; }
 .form-btn-full { width: 100%; }
+
+.form-error { font-size: 13px; color: #dc2626; margin: 0 0 8px; padding: 8px 12px; background: #fef2f2; border-radius: 6px; }
 
 /* ── OTP ── */
 .otp-card {

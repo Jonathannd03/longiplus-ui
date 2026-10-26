@@ -2,6 +2,20 @@ import type { useAuthStore } from '@/stores/auth';
 
 const API_BASE = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000/v1';
 
+export async function publicFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const isFormData = init.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(!isFormData && { 'Content-Type': 'application/json' }),
+    ...(init.headers as Record<string, string>),
+  };
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API error ${res.status}: ${body}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 export function createApiClient(store: ReturnType<typeof useAuthStore>) {
   return async function apiFetch<T>(
     path: string,
