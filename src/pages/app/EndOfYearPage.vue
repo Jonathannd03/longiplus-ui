@@ -2,8 +2,8 @@
   <div class="page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Fin d'année — 2026-2027</h1>
-        <p class="page-sub">Délibération · Décisions · Préparation de la rentrée 2027-2028</p>
+        <h1 class="page-title">Fin d'année — {{ activeYear?.label ?? '…' }}</h1>
+        <p class="page-sub">Délibération · Décisions · Préparation de la rentrée {{ nextYearLabel }}</p>
       </div>
       <div class="header-actions">
         <button class="btn btn--ghost">
@@ -21,33 +21,39 @@
 
     <!-- Tab: Délibération -->
     <div v-if="activeTab === 'deliberation'" class="tab-content">
-      <div class="stats-row">
-        <div class="eoy-stat"><div class="eoy-num eoy-num--green">{{ admisCount }}</div><div class="eoy-label">Admis</div></div>
-        <div class="eoy-stat"><div class="eoy-num eoy-num--orange">{{ secondeCount }}</div><div class="eoy-label">Seconde session</div></div>
-        <div class="eoy-stat"><div class="eoy-num eoy-num--red">{{ doublantCount }}</div><div class="eoy-label">Doublent</div></div>
-        <div class="eoy-stat"><div class="eoy-num">{{ totalRows }}</div><div class="eoy-label">Élèves traités</div></div>
-      </div>
+      <div v-if="loading" class="empty-state">Chargement…</div>
+      <template v-else>
+        <div class="stats-row">
+          <div class="eoy-stat"><div class="eoy-num eoy-num--green">{{ admisCount }}</div><div class="eoy-label">Admis</div></div>
+          <div class="eoy-stat"><div class="eoy-num eoy-num--orange">{{ secondeCount }}</div><div class="eoy-label">Seconde session</div></div>
+          <div class="eoy-stat"><div class="eoy-num eoy-num--red">{{ doublantCount }}</div><div class="eoy-label">Doublent</div></div>
+          <div class="eoy-stat"><div class="eoy-num">{{ totalRows }}</div><div class="eoy-label">Élèves traités</div></div>
+        </div>
 
-      <div class="table-wrapper">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Élève</th><th>Moy. annuelle</th><th>Échecs</th><th>Proposition</th><th>Décision</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in rows" :key="row.studentName">
-              <td class="student-name">{{ row.studentName }}</td>
-              <td><strong>{{ row.annualAvg.toFixed(1) }} %</strong></td>
-              <td>{{ row.failures }}</td>
-              <td class="proposal">{{ row.proposal }}</td>
-              <td>
-                <input type="text" :value="row.decision" @change="updateDecision(row.studentName, ($event.target as HTMLInputElement).value)" class="decision-input" />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Élève</th><th>Moy. annuelle</th><th>Échecs</th><th>Proposition</th><th>Décision</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="rows.length === 0">
+                <td colspan="5" style="text-align:center;color:#9ca3af;padding:32px">Aucun élève pour cette année scolaire.</td>
+              </tr>
+              <tr v-for="row in rows" :key="row.studentId">
+                <td class="student-name">{{ row.studentName }}</td>
+                <td><strong>{{ row.annualAvg.toFixed(1) }} %</strong></td>
+                <td>{{ row.failures }}</td>
+                <td class="proposal">{{ row.proposal }}</td>
+                <td>
+                  <input type="text" :value="row.decision" @change="updateDecision(row.studentId, ($event.target as HTMLInputElement).value)" class="decision-input" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </div>
 
     <!-- Tab: Rentrée suivante -->
@@ -55,15 +61,21 @@
       <div class="nextyear-grid">
         <div class="nextyear-card">
           <div class="nextyear-icon">📅</div>
-          <h3 class="nextyear-title">Créer l'année 2027-2028</h3>
-          <p class="nextyear-desc">Les classes, le barème et les périodes seront copiés depuis 2026-2027. Vous pourrez les modifier.</p>
-          <button class="btn btn--navy">Créer l'année scolaire</button>
+          <h3 class="nextyear-title">Créer l'année {{ nextYearLabel }}</h3>
+          <p class="nextyear-desc">Les classes, le barème et les périodes seront copiés depuis {{ activeYear?.label }}. Vous pourrez les modifier.</p>
+          <button v-if="!nextYear" class="btn btn--navy" :disabled="creatingYear" @click="createNextYear">
+            {{ creatingYear ? 'Création…' : 'Créer l\'année scolaire' }}
+          </button>
+          <span v-else class="created-badge">✓ Année {{ nextYear.label }} créée</span>
         </div>
         <div class="nextyear-card">
           <div class="nextyear-icon">👥</div>
-          <h3 class="nextyear-title">Promouvoir les élèves admis</h3>
-          <p class="nextyear-desc">Les élèves admis sont automatiquement promus dans la classe suivante. Confirmez avant de continuer.</p>
-          <button class="btn btn--ghost" disabled>Disponible après clôture</button>
+          <h3 class="nextyear-title">Promouvoir les élèves</h3>
+          <p class="nextyear-desc">Inscrit les élèves ayant une décision dans l'année {{ nextYearLabel }}. Requiert que l'année soit créée.</p>
+          <p v-if="promoteError" class="nextyear-error">{{ promoteError }}</p>
+          <button class="btn btn--ghost" :disabled="!nextYear || promoting" @click="promoteAdmis">
+            {{ promoting ? 'Promotion…' : nextYear ? 'Promouvoir les élèves' : 'Créez l\'année d\'abord' }}
+          </button>
         </div>
         <div class="nextyear-card">
           <div class="nextyear-icon">📤</div>
@@ -77,26 +89,117 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useGradesStore } from '@/stores'
+import { ref, computed, onMounted } from 'vue'
+import { useSetupApi } from '@/api/setup'
+import type { AcademicYear } from '@/api/setup'
 
-const gradesStore = useGradesStore()
+const api = useSetupApi()
 const activeTab = ref('deliberation')
-const tabs = [
-  { id: 'deliberation', label: 'Délibération' },
-  { id: 'nextyear', label: 'Rentrée 2027-2028' },
-]
 
-const rows = ref(gradesStore.endOfYearRows.map(r => ({ ...r })))
+const activeYear = ref<AcademicYear | null>(null)
+const nextYear = ref<AcademicYear | null>(null)
+const loading = ref(false)
+const promoting = ref(false)
+const creatingYear = ref(false)
+const promoteError = ref('')
+
+interface EoyRow {
+  studentId: string
+  studentName: string
+  annualAvg: number
+  failures: number
+  proposal: string
+  decision: string
+}
+
+const rows = ref<EoyRow[]>([])
+
+const nextYearLabel = computed(() => {
+  if (!activeYear.value) return '...'
+  const parts = activeYear.value.label.split('-')
+  if (parts.length === 2) {
+    const y1 = parseInt(parts[0] ?? '0') + 1
+    const y2 = parseInt(parts[1] ?? '0') + 1
+    return `${y1}-${y2}`
+  }
+  return activeYear.value.label
+})
+
+const tabs = computed(() => [
+  { id: 'deliberation', label: 'Délibération' },
+  { id: 'nextyear', label: `Rentrée ${nextYearLabel.value}` },
+])
 
 const totalRows = computed(() => rows.value.length)
 const admisCount = computed(() => rows.value.filter(r => r.decision.startsWith('Admis')).length)
 const secondeCount = computed(() => rows.value.filter(r => r.decision.startsWith('Seconde')).length)
 const doublantCount = computed(() => rows.value.filter(r => r.decision.startsWith('Double')).length)
 
-function updateDecision(studentName: string, decision: string) {
-  const row = rows.value.find(r => r.studentName === studentName)
+onMounted(async () => {
+  loading.value = true
+  try {
+    const years = await api.academicYears.list()
+    activeYear.value = years.find(y => y.status === 'active') ?? years[0] ?? null
+    if (!activeYear.value) return
+
+    const students = await api.students.list({ yearId: activeYear.value.id })
+    rows.value = students.map(s => ({
+      studentId: s.id,
+      studentName: `${s.lastName} ${s.firstName}`,
+      annualAvg: 0,
+      failures: 0,
+      proposal: '—',
+      decision: '',
+    }))
+
+    nextYear.value = years.find(y => y.label === nextYearLabel.value) ?? null
+  } finally {
+    loading.value = false
+  }
+})
+
+function updateDecision(studentId: string, decision: string) {
+  const row = rows.value.find(r => r.studentId === studentId)
   if (row) row.decision = decision
+}
+
+async function createNextYear() {
+  if (!activeYear.value) return
+  creatingYear.value = true
+  try {
+    const label = nextYearLabel.value
+    const y1 = parseInt(label.split('-')[0] ?? '2027')
+    const y2 = parseInt(label.split('-')[1] ?? '2028')
+    const newYear = await api.academicYears.create({
+      label,
+      startsOn: `${y1}-09-01`,
+      endsOn: `${y2}-07-01`,
+      gradingType: activeYear.value.gradingType,
+    })
+    nextYear.value = newYear
+  } finally {
+    creatingYear.value = false
+  }
+}
+
+async function promoteAdmis() {
+  if (!activeYear.value || !nextYear.value) return
+  promoting.value = true
+  promoteError.value = ''
+  try {
+    const decisions = rows.value
+      .filter(r => r.decision.trim() !== '')
+      .map(r => ({ studentId: r.studentId, toSectionId: null as string | null }))
+    await api.enrollments.reenroll({
+      fromYearId: activeYear.value.id,
+      toYearId: nextYear.value.id,
+      decisions,
+    })
+  } catch (e) {
+    promoteError.value = e instanceof Error ? e.message : 'Erreur lors de la promotion.'
+  } finally {
+    promoting.value = false
+  }
 }
 </script>
 
@@ -134,4 +237,7 @@ function updateDecision(studentName: string, decision: string) {
 .nextyear-icon { font-size: 28px; }
 .nextyear-title { font-family: 'Poppins', sans-serif; font-size: 15px; font-weight: 700; color: var(--k-navy); margin: 0; }
 .nextyear-desc { font-size: 13px; color: var(--k-text-muted); margin: 0; flex: 1; }
+.nextyear-error { font-size: 12px; color: #dc2626; margin: 0; }
+.created-badge { font-size: 13px; font-weight: 600; color: #16a34a; }
+.empty-state { text-align: center; color: #9ca3af; padding: 48px; font-size: 14px; }
 </style>

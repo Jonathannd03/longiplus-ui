@@ -1,4 +1,4 @@
-import { createApiClient } from './http';
+import { createApiClient, publicFetch } from './http';
 import { useAuthStore } from '@/stores/auth';
 
 export interface AcademicYear {
@@ -271,6 +271,17 @@ export interface BulletinSectionStatus {
   periodId: string;
 }
 
+export interface RegisterApplyDto {
+  schoolName: string;
+  province: string;
+  city: string;
+  address?: string;
+  directorName: string;
+  directorPhone: string;
+  email?: string;
+  estimatedStudents?: number;
+}
+
 export function useSetupApi() {
   const authStore = useAuthStore();
   const api = createApiClient(authStore);
@@ -312,6 +323,8 @@ export function useSetupApi() {
       list: () => api<Member[]>('/memberships'),
       invite: (dto: { email: string; role: string }) =>
         api<Member>('/memberships/invite', { method: 'POST', body: JSON.stringify(dto) }),
+      phoneInvite: (dto: { phone: string; role: 'teacher' | 'class_teacher' | 'secretary' }) =>
+        api<{ id: string }>('/memberships/phone-invite', { method: 'POST', body: JSON.stringify(dto) }),
     },
 
     students: {
@@ -432,3 +445,17 @@ export function useSetupApi() {
     },
   };
 }
+
+export const publicApi = {
+  register: {
+    apply: (dto: RegisterApplyDto) =>
+      publicFetch<{ id: string; status: string }>('/register', { method: 'POST', body: JSON.stringify(dto) }),
+  },
+  memberships: {
+    verifyInvite: (dto: { phone: string; code: string }) =>
+      publicFetch<{ id: string; role: string; schoolId: string; status: string }>(
+        '/memberships/verify-invite',
+        { method: 'POST', body: JSON.stringify(dto) },
+      ),
+  },
+};
