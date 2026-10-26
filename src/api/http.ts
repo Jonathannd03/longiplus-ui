@@ -10,8 +10,17 @@ export async function publicFetch<T>(path: string, init: RequestInit = {}): Prom
   };
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
+    const text = await res.text();
+    let message = `Erreur ${res.status}`;
+    try {
+      const json = JSON.parse(text) as { message?: string | string[] };
+      const msg = json.message;
+      if (typeof msg === 'string') message = msg;
+      else if (Array.isArray(msg) && msg.length > 0) message = msg[0] ?? message;
+    } catch {
+      // not JSON — use the status code message
+    }
+    throw new Error(message);
   }
   return res.json() as Promise<T>;
 }
@@ -40,8 +49,17 @@ export function createApiClient(store: ReturnType<typeof useAuthStore>) {
     }
 
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`API error ${res.status}: ${body}`);
+      const text = await res.text();
+      let message = `Erreur ${res.status}`;
+      try {
+        const json = JSON.parse(text) as { message?: string | string[] };
+        const msg = json.message;
+        if (typeof msg === 'string') message = msg;
+        else if (Array.isArray(msg) && msg.length > 0) message = msg[0] ?? message;
+      } catch {
+        // not JSON — use the status code message
+      }
+      throw new Error(message);
     }
 
     return res.json() as Promise<T>;
