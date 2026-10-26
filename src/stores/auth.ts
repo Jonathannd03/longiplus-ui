@@ -28,38 +28,48 @@ export const useAuthStore = defineStore('auth', () => {
   const schools = ref<SchoolRef[]>([]);
   const token = ref<string | null>(null);
   const schoolId = ref<string | null>(null);
+  const authReady = ref(false);
 
   const isAuthenticated = computed(() => !!user.value);
 
   async function initFromKeycloak(): Promise<void> {
-    const authenticated = await initKeycloak();
-    if (!authenticated) return;
-
-    token.value = keycloak.token ?? null;
-
-    const API_BASE = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000/v1';
-    const storedSchoolId = sessionStorage.getItem('longiplus_school_id');
-
-    // POST /auth/session on first login; GET /auth/me on reload
-    const method = storedSchoolId ? 'GET' : 'POST';
-    const path = storedSchoolId ? '/auth/me' : '/auth/session';
-    const headers: Record<string, string> = {
-      'Authorization': `Bearer ${token.value}`,
-      'Content-Type': 'application/json',
-    };
-    if (storedSchoolId) headers['X-School-Id'] = storedSchoolId;
-
     try {
-      const res = await fetch(`${API_BASE}${path}`, { method, headers });
-      if (!res.ok) return;
+      let authenticated: boolean;
+      try {
+        authenticated = await initKeycloak();
+      } catch {
+        return;
+      }
+      if (!authenticated) return;
 
-      const data = await res.json() as { user: AuthUser; schools: SchoolRef[] };
-      user.value = data.user;
-      schools.value = data.schools;
-      schoolId.value = data.user.schoolId;
-      sessionStorage.setItem('longiplus_school_id', data.user.schoolId);
-    } catch {
-      // Network error — stay unauthenticated in the UI
+      token.value = keycloak.token ?? null;
+
+      const API_BASE = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000/v1';
+      const storedSchoolId = sessionStorage.getItem('longiplus_school_id');
+
+      // POST /auth/session on first login; GET /auth/me on reload
+      const method = storedSchoolId ? 'GET' : 'POST';
+      const path = storedSchoolId ? '/auth/me' : '/auth/session';
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token.value}`,
+        'Content-Type': 'application/json',
+      };
+      if (storedSchoolId) headers['X-School-Id'] = storedSchoolId;
+
+      try {
+        const res = await fetch(`${API_BASE}${path}`, { method, headers });
+        if (!res.ok) return;
+
+        const data = await res.json() as { user: AuthUser; schools: SchoolRef[] };
+        user.value = data.user;
+        schools.value = data.schools;
+        schoolId.value = data.user.schoolId;
+        sessionStorage.setItem('longiplus_school_id', data.user.schoolId);
+      } catch {
+        // Network error — stay unauthenticated in the UI
+      }
+    } finally {
+      authReady.value = true;
     }
   }
 
@@ -99,6 +109,7 @@ export const useAuthStore = defineStore('auth', () => {
     schools,
     token,
     schoolId,
+    authReady,
     isAuthenticated,
     initFromKeycloak,
     login,

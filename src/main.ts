@@ -17,7 +17,9 @@ app.use(i18n);
 app.use(PrimeVue, { theme: { preset: Aura } });
 app.use(VueQueryPlugin);
 
-const authStore = useAuthStore();
-await authStore.initFromKeycloak();
-
 app.mount('#app');
+
+const authStore = useAuthStore();
+authStore.initFromKeycloak().catch(err => {
+  console.error('[auth] init error:', err);
+});

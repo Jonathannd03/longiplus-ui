@@ -176,7 +176,7 @@
 
           <div class="form-actions form-actions--between">
             <button class="btn btn--ghost" @click="go(1)">Retour</button>
-            <button class="btn btn--navy" @click="go(3)">Vérifier et continuer</button>
+            <button class="btn btn--navy" :disabled="otpDigits.some(d => !d)" @click="go(3)">Vérifier et continuer</button>
           </div>
         </template>
 
@@ -306,7 +306,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onUnmounted } from 'vue'
 import { publicApi, type RegisterApplyDto } from '@/api/setup'
 
 const currentStep = ref(1)
@@ -363,7 +363,29 @@ const canStep1 = computed(() =>
 
 const otpDigits = reactive(['', '', '', '', '', ''])
 const otpRefs: HTMLInputElement[] = []
-const otpCountdown = ref('0:38')
+
+const otpSeconds = ref(60)
+const otpCountdown = computed(() => {
+  const m = Math.floor(otpSeconds.value / 60)
+  const s = otpSeconds.value % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+})
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+function startCountdown() {
+  otpSeconds.value = 60
+  if (countdownTimer) clearInterval(countdownTimer)
+  countdownTimer = setInterval(() => {
+    if (otpSeconds.value > 0) {
+      otpSeconds.value--
+    } else {
+      clearInterval(countdownTimer!)
+      countdownTimer = null
+    }
+  }, 1000)
+}
+
+onUnmounted(() => { if (countdownTimer) clearInterval(countdownTimer) })
 
 function onOtpInput(i: number) {
   const val = (otpDigits[i] ?? '').replace(/\D/g, '')
@@ -436,6 +458,7 @@ async function submitRegistration() {
 }
 
 function go(n: number) {
+  if (n === 2) startCountdown()
   currentStep.value = n
   window.scrollTo(0, 0)
 }
